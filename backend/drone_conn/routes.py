@@ -136,22 +136,23 @@ def stop_detection():
     Stops detection and finalizes the scan session.
     """
     body = request.get_json(silent=True) or {}
-    
+
     block_id = (body.get('block_id') or '').strip()
-    scan_id = (body.get('scan_id') or '').strip()
-    
+    scan_id  = (body.get('scan_id')  or '').strip()
+    user_id  = (body.get('user_id')  or '').strip()
+
     if not block_id or not scan_id:
         return jsonify({
             'ok': False,
             'error': 'missing_parameters',
             'message': 'block_id and scan_id are required'
         }), 400
-    
+
     # Get detector instance
     detector = get_detector()
-    
-    # Stop detection
-    success = detector.stop_detection(block_id, scan_id)
+
+    # Stop detection — pass user_id so created alerts get the userId field
+    success = detector.stop_detection(block_id, scan_id, user_id=user_id)
     
     if success:
         return jsonify({

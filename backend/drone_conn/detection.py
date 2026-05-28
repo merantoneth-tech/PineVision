@@ -25,7 +25,8 @@ def check_thresholds_and_create_alerts(
     block_id: str,
     bearing_percent: float,
     non_bearing_percent: float,
-    non_viable_percent: float
+    non_viable_percent: float,
+    user_id: str = '',
 ):
     """
     Check detection percentages against thresholds and create or
@@ -111,6 +112,7 @@ def check_thresholds_and_create_alerts(
             new_ref = db.collection('monitoring_alerts').document()
             batch.set(new_ref, {
                 'blockId':      block_id,
+                'userId':       user_id,
                 'severity':     severity,
                 'title':        title,
                 'description':  description,
@@ -304,14 +306,14 @@ class PineappleDetector:
     ) -> Optional[str]:
         """
         Start real-time detection from HLS stream.
-        
+
         Args:
             hls_url: HLS stream URL (e.g., http://localhost:8888/stream/index.m3u8)
             block_id: Firestore block document ID
             user_id: User ID for the scan session
             fps: Frames per second to process (default: 1)
             update_interval: Seconds between Firebase updates (default: 2.0)
-        
+
         Returns:
             Scan session ID if successful, None otherwise
         """
@@ -320,15 +322,15 @@ class PineappleDetector:
         if not scan_id:
             print("❌ Failed to create scan session")
             return None
-        
+
         # Reset tracking data
         self.reset_tracking()
-        
+
         # Start detection in background thread
         self.detection_active = True
         self.detection_thread = threading.Thread(
             target=self._detection_loop,
-            args=(hls_url, block_id, scan_id, fps, update_interval),
+            args=(hls_url, block_id, scan_id, user_id, fps, update_interval),
             daemon=True
         )
         self.detection_thread.start()
@@ -341,6 +343,7 @@ class PineappleDetector:
         hls_url: str,
         block_id: str,
         scan_id: str,
+        user_id: str,
         fps: int,
         update_interval: float
     ):
@@ -403,14 +406,16 @@ class PineappleDetector:
             stream.stop()
             print("🛑 Detection loop stopped")
     
-    def stop_detection(self, block_id: str, scan_id: str) -> bool:
+    def stop_detection(self, block_id: str, scan_id: str, user_id: str = '') -> bool:
         """
         Stop detection and finalize scan session.
-        
+
         Args:
             block_id: Firestore block document ID
             scan_id: Scan session ID
-        
+            user_id: Owner UID — forwarded to alert creation so every
+                     monitoring_alert document gets a userId field.
+
         Returns:
             True if stopped successfully, False otherwise
         """
@@ -468,7 +473,8 @@ class PineappleDetector:
                     block_id=block_id,
                     bearing_percent=bearing_percent,
                     non_bearing_percent=non_bearing_percent,
-                    non_viable_percent=non_viable_percent
+                    non_viable_percent=non_viable_percent,
+                    user_id=user_id,
                 )
             except Exception as e:
                 print(f"⚠️ Error checking thresholds: {e}")

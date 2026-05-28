@@ -15,6 +15,34 @@ from drone_conn.routes import drone_bp
 
 # Absolute path to the frontend folder (one level up from backend/)
 FRONTEND = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend'))
+
+
+def _verify_admin_token():
+    """
+    Verify the Firebase ID token from the Authorization header and confirm
+    the caller has the 'admin' role in Firestore.  Returns the decoded token
+    on success, or aborts with 401/403 on failure.
+
+    Usage inside a route:
+        decoded = _verify_admin_token()
+    """
+    header = request.headers.get('Authorization', '')
+    if not header.startswith('Bearer '):
+        return None, (jsonify({'error': 'Missing or invalid Authorization header'}), 401)
+    id_token = header.split('Bearer ', 1)[1].strip()
+    try:
+        decoded = auth.verify_id_token(id_token)
+    except Exception:
+        return None, (jsonify({'error': 'Invalid or expired token'}), 401)
+
+    if not db:
+        return None, (jsonify({'error': 'Firebase not initialized'}), 500)
+
+    user_doc = db.collection('users').document(decoded['uid']).get()
+    if not user_doc.exists or user_doc.to_dict().get('role') != 'admin':
+        return None, (jsonify({'error': 'Admin access required'}), 403)
+
+    return decoded, None
 PAGES = os.path.join(FRONTEND, 'pages')
 
 app = Flask(__name__, static_folder=None)
@@ -52,19 +80,27 @@ def api_test():
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
-    """Get all users from Firestore"""
-    if not db:
-        return jsonify({'error': 'Firebase not initialized'}), 500
-    
+    """Get users from Firestore with cursor-based pagination."""
+    _, err = _verify_admin_token()
+    if err:
+        return err
+
     try:
-        users_ref = db.collection('users')
+        page_size = min(int(request.args.get('limit', 50)), 200)
+        start_after = request.args.get('startAfter')
+
+        query = db.collection('users').limit(page_size)
+        if start_after:
+            start_doc = db.collection('users').document(start_after).get()
+            if start_doc.exists:
+                query = query.start_after(start_doc)
+
         users = []
-        
-        for doc in users_ref.stream():
+        for doc in query.stream():
             user_data = doc.to_dict()
             user_data['id'] = doc.id
             users.append(user_data)
-        
+
         return jsonify(users), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -73,9 +109,10 @@ def get_users():
 @app.route('/api/users', methods=['POST'])
 def create_user():
     """Create new user in Firebase Authentication and Firestore"""
-    if not db:
-        return jsonify({'error': 'Firebase not initialized'}), 500
-    
+    _, err = _verify_admin_token()
+    if err:
+        return err
+
     try:
         data = request.json
         
@@ -115,9 +152,10 @@ def create_user():
 @app.route('/api/users/<user_id>', methods=['PUT'])
 def update_user(user_id):
     """Update existing user"""
-    if not db:
-        return jsonify({'error': 'Firebase not initialized'}), 500
-    
+    _, err = _verify_admin_token()
+    if err:
+        return err
+
     try:
         data = request.json
         
@@ -149,6 +187,10 @@ def update_user(user_id):
 @app.route('/api/users/<user_id>/reset-password', methods=['POST'])
 def reset_password(user_id):
     """Reset user password"""
+    _, err = _verify_admin_token()
+    if err:
+        return err
+
     try:
         data = request.json
         auth.update_user(user_id, password=data['newPassword'])
@@ -160,9 +202,10 @@ def reset_password(user_id):
 @app.route('/api/users/<user_id>/toggle-status', methods=['POST'])
 def toggle_status(user_id):
     """Enable/Disable user account"""
-    if not db:
-        return jsonify({'error': 'Firebase not initialized'}), 500
-    
+    _, err = _verify_admin_token()
+    if err:
+        return err
+
     try:
         # Get current status from Firestore
         user_doc = db.collection('users').document(user_id).get()
