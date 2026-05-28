@@ -12,6 +12,7 @@
     // ═══════════════════════════════════════════════════════════
 
     let scansData = [];
+    let currentUserId = null;
 
     // ═══════════════════════════════════════════════════════════
     // INITIALIZATION
@@ -28,8 +29,8 @@
             return;
         }
 
+        currentUserId = currentUser.uid;
         await loadScansData();
-        await updateSidebarWithUserInfo();  // ✅ Add this line
     };
 
     // ═══════════════════════════════════════════════════════════
@@ -39,10 +40,12 @@
     async function loadScansData() {
         try {
             console.log('📊 Loading scans data from Firestore...');
+            utils.showLoading('scan-list');
 
-            // First, fetch all blocks to create a mapping
+            // First, fetch this user's blocks to create a mapping
             const blocksSnapshot = await firebase.firestore()
                 .collection('blocks')
+                .where('userId', '==', currentUserId)
                 .get();
 
             // Create a map of blockId to block number
@@ -56,9 +59,10 @@
 
             console.log('All block IDs:', Object.keys(blockIdToNumber));
 
-            // Fetch all scans, ordered by startTime descending (newest first)
+            // Fetch only this user's scans, ordered by startTime descending (newest first)
             const scansSnapshot = await firebase.firestore()
                 .collection('scans')
+                .where('userId', '==', currentUserId)
                 .orderBy('startTime', 'desc')
                 .get();
 
@@ -283,58 +287,4 @@
     }
 
 })();
-
-// Auto-initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', function () {
-    if (typeof window.initPage === 'function') {
-        window.initPage();
-    }
-});
-
-// Add this to each page's JavaScript
-async function updateSidebarWithUserInfo() {
-    try {
-        const currentUser = auth.getCurrentUser();
-        if (!currentUser) return;
-
-        const userDoc = await firebase.firestore()
-            .collection('users')
-            .doc(currentUser.uid)
-            .get();
-
-        if (userDoc.exists) {
-            const userData = userDoc.data();
-
-            // Get first name
-            let firstName = '';
-            if (userData.fullName) {
-                firstName = userData.fullName.split(' ')[0];
-            } else if (userData.firstName) {
-                firstName = userData.firstName;
-            } else {
-                firstName = userData.email?.split('@')[0] || 'User';
-            }
-
-            const role = userData.role || 'client';
-
-            // Update sidebar
-            const sidebarUserName = document.querySelector('.sidebar-user-name');
-            if (sidebarUserName) {
-                sidebarUserName.textContent = firstName;
-            }
-
-            const sidebarUserRole = document.querySelector('.sidebar-user-role');
-            if (sidebarUserRole) {
-                sidebarUserRole.textContent = role;
-            }
-
-            const sidebarAvatar = document.querySelector('.sidebar-user-avatar');
-            if (sidebarAvatar) {
-                sidebarAvatar.textContent = firstName.charAt(0).toUpperCase();
-            }
-        }
-    } catch (error) {
-        console.error('Error updating sidebar:', error);
-    }
-}
 

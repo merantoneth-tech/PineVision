@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="https://firestore.googleapis.com">
+    <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com">
     <script>
       (function () {
         try {
@@ -1906,9 +1909,7 @@
         }, 600);
       }
 
-      function openLogoutModal() {
-        document.getElementById("logout-modal").style.display = "flex";
-      }
+      function openLogoutModal() { auth.confirmLogout(); }
       function closeLogoutModal() {
         document.getElementById("logout-modal").style.display = "none";
       }

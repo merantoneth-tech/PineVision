@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="https://firestore.googleapis.com">
+    <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com">
     <script>
       (function () {
         try {
@@ -863,6 +866,7 @@
 
         db.collection("alerts")
           .orderBy("timestamp", "desc")
+          .limit(200)
           .onSnapshot(
             function (snapshot) {
               ACCOUNT_ALERTS = snapshot.docs.map(mapAlert);
@@ -1411,9 +1415,7 @@
           utils.showToast("Alerts refreshed.", "success");
       }
 
-      function openLogoutModal() {
-        document.getElementById("logout-modal").style.display = "flex";
-      }
+      function openLogoutModal() { auth.confirmLogout(); }
       function closeLogoutModal() {
         document.getElementById("logout-modal").style.display = "none";
       }

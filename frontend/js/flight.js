@@ -54,16 +54,16 @@
     // LOAD OPERATORS
     // ═══════════════════════════════════════════════════════════
 
-    // ═══════════════════════════════════════════════════════════
-    // LOAD OPERATORS
-    // ═══════════════════════════════════════════════════════════
-
-    // ═══════════════════════════════════════════════════════════
-    // LOAD OPERATORS
-    // ═══════════════════════════════════════════════════════════
-
     async function loadOperators() {
         try {
+            const cached = window.pvCache && window.pvCache.get('operators');
+            if (cached) {
+                operators = cached;
+                populateOperatorDropdowns();
+                console.log('✅ Operators from cache:', operators.length);
+                return;
+            }
+
             const snapshot = await firebase.firestore()
                 .collection('users')
                 .where('role', '==', 'client')
@@ -72,16 +72,16 @@
             operators = [];
             snapshot.forEach(doc => {
                 const data = doc.data();
-
-                // Use fullName field, fallback to email
                 const name = data.fullName || data.email || 'Unknown Operator';
-
                 operators.push(name.trim());
             });
 
-            // If no operators found, use default names
             if (operators.length === 0) {
                 operators = ['Juan Dela Cruz', 'Maria Santos', 'Pedro Reyes'];
+            }
+
+            if (window.pvCache) {
+                window.pvCache.set('operators', operators, 120_000); // 2-minute TTL
             }
 
             populateOperatorDropdowns();
@@ -126,6 +126,7 @@
     async function loadMissions() {
         try {
             console.log('📊 Loading missions for user:', currentUserId);
+            utils.showLoading('missions-grid');
 
             const snapshot = await firebase.firestore()
                 .collection('missions')
@@ -358,6 +359,12 @@
                 return;
             }
 
+            // Ownership check — prevent editing another user's mission by ID.
+            if (doc.data().userId !== currentUserId) {
+                utils.showToast('Access denied', 'error');
+                return;
+            }
+
             const data = doc.data();
 
             // Parse date from "May 09, 2026" to "2026-05-09"
@@ -437,17 +444,5 @@
             utils.showToast('Failed to update mission', 'error');
         }
     };
-
-    // ═══════════════════════════════════════════════════════════
-    // AUTO-INITIALIZE ON PAGE LOAD
-    // ═══════════════════════════════════════════════════════════
-
-    // Wait for DOM and Firebase to be ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', window.initPage);
-    } else {
-        // DOM already loaded
-        window.initPage();
-    }
 
 })();

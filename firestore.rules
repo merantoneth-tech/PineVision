@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─────────────────────────────────────────────────────────
+    // Helper: check whether the requesting user is an admin
+    // by reading their role from the users collection.
+    // ─────────────────────────────────────────────────────────
+    function isAdmin() {
+      return request.auth != null &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // users collection
+    //
+    // Read own document OR admin reads any.
+    // List (query) is allowed for authenticated users so the
+    // username-to-email lookup in auth.js can run before sign-in
+    // completes.  This is a known trade-off: email addresses are
+    // discoverable by authenticated users.  Move the lookup to a
+    // Cloud Function to remove this if stricter privacy is needed.
+    // Write requires admin.
+    // ─────────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow get:   if request.auth.uid == userId || isAdmin();
+      allow list:  if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Per-user farm data: blocks, scans, missions, monitoring_alerts
+    //
+    // Read/write only if the document's userId matches the caller,
+    // OR the caller is an admin (preserves full admin visibility).
+    // ─────────────────────────────────────────────────────────
+    match /blocks/{docId} {
+      allow read, update, delete: if request.auth != null &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if request.auth != null &&
+        request.resource.data.userId == request.auth.uid;
+    }
+
+    match /scans/{docId} {
+      allow read, update, delete: if request.auth != null &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if request.auth != null &&
+        request.resource.data.userId == request.auth.uid;
+    }
+
+    match /missions/{docId} {
+      allow read, update, delete: if request.auth != null &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if request.auth != null &&
+        request.resource.data.userId == request.auth.uid;
+    }
+
+    match /monitoring_alerts/{docId} {
+      allow read, update, delete: if request.auth != null &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if request.auth != null &&
+        request.resource.data.userId == request.auth.uid;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // activity_logs and alerts
+    //
+    // Written by the client SDK including during unauthenticated
+    // failed-login attempts (auth.js catch block).  Open create
+    // is intentional here.  Admin reads all; users cannot list
+    // all logs (prevents enumeration of other users' activity).
+    // ─────────────────────────────────────────────────────────
+    match /activity_logs/{docId} {
+      allow create: if true;
+      allow read:   if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    match /alerts/{docId} {
+      allow create: if true;
+      allow read:   if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+  }
+}

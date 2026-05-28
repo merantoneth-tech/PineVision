@@ -13,6 +13,7 @@
 
     let blocksData = [];
     let latestScanData = null;
+    let currentUser = null;
 
     // ═══════════════════════════════════════════════════════════
     // INITIALIZATION
@@ -22,7 +23,7 @@
         console.log('🚀 Initializing Dashboard...');
 
         // Check Firebase auth
-        const currentUser = auth.getCurrentUser();
+        currentUser = auth.getCurrentUser();
         if (!currentUser) {
             console.warn('⚠️ No user logged in');
             window.location.href = '../auth/login.html';
@@ -39,10 +40,12 @@
     async function loadDashboardData() {
         try {
             console.log('📊 Loading dashboard data from Firestore...');
+            utils.showLoading('metrics-grid');
 
-            // Fetch all blocks
+            // Fetch only this user's blocks
             const blocksSnapshot = await firebase.firestore()
                 .collection('blocks')
+                .where('userId', '==', currentUser.uid)
                 .get();
 
             blocksData = [];
@@ -191,6 +194,24 @@
     // ═══════════════════════════════════════════════════════════
 
     function renderMetrics() {
+        const metricsEl = document.getElementById('metrics-grid');
+        if (!metricsEl) return;
+
+        if (blocksData.length === 0) {
+            metricsEl.innerHTML = `
+                <div style="width:100%;display:flex;align-items:center;justify-content:center;min-height:40vh;">
+                    <div class="empty-state" style="display:flex;flex-direction:column;align-items:center;justify-content:center;max-width:380px;">
+                        <div class="empty-state-icon" style="display:flex;align-items:center;justify-content:center;">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        </div>
+                        <div class="empty-state-title">No block data available</div>
+                        <div class="empty-state-text">Farm metrics will appear here once block scan data has been recorded.</div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
         const totals = calculateFarmTotals();
 
         const metricsHTML = `
@@ -220,8 +241,7 @@
         )}
         `;
 
-        const metricsEl = document.getElementById('metrics-grid');
-        if (metricsEl) metricsEl.innerHTML = metricsHTML;
+        metricsEl.innerHTML = metricsHTML;
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -260,7 +280,7 @@
         `;
         });
 
-        tbody.innerHTML = rowsHTML || '<tr><td colspan="8" style="text-align:center;color:var(--muted);">No blocks found</td></tr>';
+        tbody.innerHTML = rowsHTML || '<tr><td colspan="8" style="text-align:center;padding:var(--space-xl);color:var(--color-text-secondary);">No blocks recorded yet.</td></tr>';
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -268,6 +288,22 @@
     // ═══════════════════════════════════════════════════════════
 
     function renderCharts() {
+        if (blocksData.length === 0) {
+            const emptyHtml = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    </div>
+                    <div class="empty-state-title">No chart data available</div>
+                    <div class="empty-state-text">Charts will appear once block scan data is available.</div>
+                </div>`;
+            const distCanvas = document.getElementById('bearing-distribution-chart');
+            const blockCanvas = document.getElementById('bearing-by-block-chart');
+            if (distCanvas) distCanvas.parentElement.innerHTML = emptyHtml;
+            if (blockCanvas) blockCanvas.parentElement.innerHTML = emptyHtml;
+            return;
+        }
+
         const totals = calculateFarmTotals();
         const isDark = document.documentElement.classList.contains('dark-mode');
         const textClr = isDark ? '#a0a0a0' : '#666666';

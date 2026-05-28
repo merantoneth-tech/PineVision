@@ -30,6 +30,7 @@
     // ═══════════════════════════════════════════════════════════
 
     let alertsData = [];
+    let currentUserId = null;
     let thresholds = {
         bearing:    { watch: 75, critical: 60 },
         nonbearing: { watch: 18, critical: 25 },
@@ -53,6 +54,7 @@
             return;
         }
 
+        currentUserId = currentUser.uid;
         await loadAlertsFromFirestore();
         utils.setupModalClose('threshold-modal');
     };
@@ -64,6 +66,7 @@
     async function loadAlertsFromFirestore() {
         try {
             console.log('📊 Loading alerts from Firestore...');
+            utils.showLoading('alert-metrics');
 
             // Blocks change rarely — serve from sessionStorage cache when fresh.
             // Alerts are always fetched live (they update frequently).
@@ -72,18 +75,26 @@
             const [alertsSnapshot, blocksSnapshot] = await Promise.all([
                 firebase.firestore()
                     .collection('monitoring_alerts')
-                    .orderBy('detectedDate', 'desc')
+                    .where('userId', '==', currentUserId)
                     .limit(100)
                     .get(),
                 cachedBlocks
-                    ? Promise.resolve({ forEach: fn => cachedBlocks.forEach(fn), size: cachedBlocks.length, _cached: true })
-                    : firebase.firestore().collection('blocks').get(),
+                    ? Promise.resolve({
+                        forEach: fn => cachedBlocks.forEach(item => fn({ id: item.id, data: () => item._data })),
+                        size: cachedBlocks.length,
+                        _cached: true,
+                    })
+                    : firebase.firestore()
+                        .collection('blocks')
+                        .where('userId', '==', currentUserId)
+                        .get(),
             ]);
 
             if (!blocksSnapshot._cached && window.pvCache) {
                 const toStore = [];
                 blocksSnapshot.forEach(doc => {
-                    toStore.push({ id: doc.id, data: () => doc.data() });
+                    const captured = doc.data();
+                    toStore.push({ id: doc.id, _data: captured });
                 });
                 window.pvCache.set('blocks', toStore, 120_000); // 2-minute TTL
             }
@@ -95,8 +106,15 @@
                 blockMap[doc.id] = d.blockName || d.name || ('Block ' + doc.id.substring(0, 6));
             });
 
+            // Sort descending by detectedDate client-side (avoids composite index requirement)
+            const sortedAlertDocs = alertsSnapshot.docs.slice().sort((a, b) => {
+                const aMs = a.data().detectedDate ? a.data().detectedDate.toMillis() : 0;
+                const bMs = b.data().detectedDate ? b.data().detectedDate.toMillis() : 0;
+                return bMs - aMs;
+            });
+
             // Map alert documents using the in-memory block map
-            alertsData = alertsSnapshot.docs.map(doc => {
+            alertsData = sortedAlertDocs.map(doc => {
                 const data = doc.data();
                 const detectedDate = data.detectedDate ? data.detectedDate.toDate() : new Date();
                 const resolvedDate = data.resolvedDate ? data.resolvedDate.toDate() : null;
@@ -286,6 +304,18 @@
     window.resolveAlert = async function (alertId) {
         console.log('🔄 Resolving alert:', alertId);
         try {
+            // Verify ownership before mutating — prevents any authenticated user
+            // from resolving another user's alert by guessing its document ID.
+            const alertDoc = await firebase.firestore()
+                .collection('monitoring_alerts')
+                .doc(alertId)
+                .get();
+
+            if (!alertDoc.exists || alertDoc.data().userId !== currentUserId) {
+                utils.showToast('Alert not found or access denied', 'error');
+                return;
+            }
+
             await firebase.firestore()
                 .collection('monitoring_alerts')
                 .doc(alertId)

@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="https://firestore.googleapis.com">
+    <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com">
     <script>
       (function () {
         try {
@@ -309,7 +312,7 @@
               <div class="sidebar-user-role">client</div>
             </div>
           </div>
-          <button class="btn-logout" onclick="auth.logout()">
+          <button class="btn-logout" onclick="auth.confirmLogout()">
             <svg
               width="16"
               height="16"
@@ -584,53 +587,8 @@
     <!-- Application JavaScript -->
     <script src="../../js/auth.js"></script>
     <script src="../../js/utils.js"></script>
+    <script src="../../js/app.js"></script>
     <script src="../../js/cache.js"></script>
     <script src="../../js/alerts.js"></script>
-
-    <script>
-
-      document.addEventListener("DOMContentLoaded", async function () {
-        console.log("=== DEBUG START ===");
-
-        // 1. Check if initPage exists
-        console.log("initPage exists:", typeof window.initPage);
-
-        // 2. Check Firebase
-        console.log("Firebase exists:", typeof firebase);
-        console.log("Firestore exists:", typeof firebase?.firestore);
-
-        // 3. Check auth
-        console.log("auth exists:", typeof auth);
-        console.log("getCurrentUser:", typeof auth?.getCurrentUser);
-
-        // 4. Check current user
-        const user = auth?.getCurrentUser?.();
-        console.log("Current user:", user);
-
-        // 5. Check utils
-        console.log("utils exists:", typeof utils);
-
-        // 6. Try calling initPage
-        try {
-          await window.initPage();
-          console.log("initPage completed successfully");
-        } catch (err) {
-          console.error("initPage threw an error:", err);
-        }
-
-        // 7. Check DOM elements exist
-        console.log(
-          "alert-metrics el:",
-          document.getElementById("alert-metrics"),
-        );
-        console.log("alerts-crit el:", document.getElementById("alerts-crit"));
-        console.log(
-          "threshold-tbody el:",
-          document.getElementById("threshold-tbody"),
-        );
-
-        console.log("=== DEBUG END ===");
-      });
-    </script>
   </body>
 </html>

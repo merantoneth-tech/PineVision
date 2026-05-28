@@ -138,13 +138,14 @@ async function apiStartDetection(hlsUrl, blockId, userId) {
 }
 
 // NEW: Stop detection API
-async function apiStopDetection(blockId, scanId) {
+async function apiStopDetection(blockId, scanId, userId) {
     const resp = await fetch(`${API_BASE}/api/drone/stop-detection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             block_id: blockId,
-            scan_id: scanId
+            scan_id: scanId,
+            user_id: userId,
         }),
         signal: AbortSignal.timeout(10_000)
     });
@@ -326,7 +327,8 @@ async function stopDetection() {
 
         const result = await apiStopDetection(
             DRONE_STATE.blockId,
-            DRONE_STATE.scanId
+            DRONE_STATE.scanId,
+            DRONE_STATE.userId
         );
 
         if (result.ok) {

@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="https://firestore.googleapis.com">
+    <link rel="dns-prefetch" href="https://identitytoolkit.googleapis.com">
     <script>
       (function () {
         try {
@@ -353,7 +356,7 @@
               <div class="sidebar-user-role">client</div>
             </div>
           </div>
-          <button class="btn-logout" onclick="auth.logout()">
+          <button class="btn-logout" onclick="auth.confirmLogout()">
             <svg
               width="16"
               height="16"

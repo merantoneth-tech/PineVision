@@ -192,11 +192,6 @@ var auth = (function () {
                 throw new Error("Your account has been disabled. Please contact an administrator.");
             }
 
-            // Update last login time in Firestore
-            await db.collection("users").doc(firebaseUser.uid).update({
-                lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-            });
-
             // Prepare user data for session
             const user = {
                 uid: firebaseUser.uid,
@@ -210,17 +205,22 @@ var auth = (function () {
             // Save session
             saveSession(user, remember);
 
-            // ⭐ LOG THE LOGIN ACTIVITY ⭐
+            // lastLogin update and activity log are independent — run in parallel
             try {
-                await db.collection('activity_logs').add({
-                    userId: user.uid,
-                    user: user.username,
-                    action: 'login',
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    status: 'success',
-                    email: user.email,
-                    role: user.role
-                });
+                await Promise.all([
+                    db.collection("users").doc(firebaseUser.uid).update({
+                        lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+                    }),
+                    db.collection('activity_logs').add({
+                        userId: user.uid,
+                        user: user.username,
+                        action: 'login',
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        status: 'success',
+                        email: user.email,
+                        role: user.role
+                    }),
+                ]);
                 console.log('✅ Login activity logged to Firestore');
             } catch (logError) {
                 console.error('Failed to log activity:', logError);
@@ -234,61 +234,44 @@ var auth = (function () {
         } catch (error) {
             setLoading(false);
 
-            let userIP = 'unknown';
-            try {
-                const ipResponse = await fetch('https://api.ipify.org?format=json');
-                const ipData = await ipResponse.json();
-                userIP = ipData.ip;
-            } catch (ipError) {
-                console.log('Could not fetch IP');
-            }
-
             // ⭐ LOG FAILED LOGIN ATTEMPT ⭐
+            // Track attempts in sessionStorage — no Firestore read needed
+            var attemptKey = 'failed_attempts_' + usernameOrEmail;
+            var attempts = parseInt(sessionStorage.getItem(attemptKey) || '0') + 1;
+            sessionStorage.setItem(attemptKey, attempts);
+            console.log('Failed attempts for ' + usernameOrEmail + ':', attempts);
+
+            // Activity log and alert write are independent — run in parallel
             try {
-                await db.collection('activity_logs').add({
-                    user: usernameOrEmail,
-                    action: 'login_failed',
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    status: 'error',
-                    email: usernameOrEmail,
-                    role: 'unknown',
-                    details: 'Failed login attempt — ' + (error.code || 'unknown'),
-                    ip: userIP,
-                    device: navigator.userAgent || 'Unknown device',
-                    errorCode: error.code || 'unknown'
-                });
+                await Promise.all([
+                    db.collection('activity_logs').add({
+                        user: usernameOrEmail,
+                        action: 'login_failed',
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        status: 'error',
+                        email: usernameOrEmail,
+                        role: 'unknown',
+                        details: 'Failed login attempt — ' + (error.code || 'unknown'),
+                        device: navigator.userAgent || 'Unknown device',
+                        errorCode: error.code || 'unknown'
+                    }),
+                    db.collection('alerts').add({
+                        alertId: 'alert_' + Date.now(),
+                        severity: attempts >= 3 ? 'critical' : 'warning',
+                        type: 'Failed Login',
+                        title: attempts >= 3 ? 'Multiple Failed Login Attempts' : 'Failed Login Attempt',
+                        user: usernameOrEmail,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        resolved: false,
+                        details: attempts >= 3
+                            ? attempts + ' failed login attempts detected'
+                            : 'Invalid login credentials provided',
+                        device: navigator.userAgent
+                    }),
+                ]);
                 console.log('❌ Failed login attempt logged');
             } catch (logError) {
                 console.error('Could not log failed attempt:', logError);
-            }
-
-            // ⭐ CREATE ALERT FOR FAILED LOGIN ⭐
-            try {
-                // Track failed attempts in sessionStorage (no Firestore read needed)
-                var attemptKey = 'failed_attempts_' + usernameOrEmail;
-                var attempts = parseInt(sessionStorage.getItem(attemptKey) || '0') + 1;
-                sessionStorage.setItem(attemptKey, attempts);
-
-                console.log('Failed attempts for ' + usernameOrEmail + ':', attempts);
-
-                await db.collection('alerts').add({
-                    alertId: 'alert_' + Date.now(),
-                    severity: attempts >= 3 ? 'critical' : 'warning',
-                    type: 'Failed Login',
-                    title: attempts >= 3 ? 'Multiple Failed Login Attempts' : 'Failed Login Attempt',
-                    user: usernameOrEmail,
-                    ip: userIP,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                    resolved: false,
-                    details: attempts >= 3
-                        ? attempts + ' failed login attempts detected'
-                        : 'Invalid login credentials provided',
-                    device: navigator.userAgent
-                });
-
-                console.log(attempts >= 3 ? '🚨 Critical alert created' : '⚠️ Warning alert created');
-            } catch (alertError) {
-                console.error('Failed to create alert:', alertError);
             }
 
             // Handle specific Firebase errors
@@ -315,6 +298,9 @@ var auth = (function () {
      * Logout function
      */
     async function logout() {
+        // Clear cached Firestore data before signing out so a subsequent
+        // login as a different user never sees the previous user's data.
+        if (window.pvCache) window.pvCache.invalidateAll();
         try {
             await firebaseAuth.signOut();
             sessionStorage.removeItem(SESSION_KEY);
@@ -337,15 +323,45 @@ var auth = (function () {
     }
 
     function confirmLogout() {
-        if (confirm('Are you sure you want to logout?')) {
-            logout();
+        const MODAL_ID = 'pv-logout-modal';
+        if (!document.getElementById(MODAL_ID)) {
+            const modal = document.createElement('div');
+            modal.id = MODAL_ID;
+            modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:9999;align-items:center;justify-content:center;';
+            modal.innerHTML =
+                '<div onclick="auth.closeLogoutModal()" style="position:absolute;inset:0;background:rgba(0,0,0,0.45);backdrop-filter:blur(2px);"></div>' +
+                '<div style="position:relative;background:var(--color-background-primary);border:1px solid var(--color-border-secondary);border-radius:var(--radius-lg);padding:var(--space-2xl);width:360px;max-width:90vw;box-shadow:var(--shadow-md);text-align:center;">' +
+                    '<div style="width:48px;height:48px;border-radius:50%;background:var(--red-bg);display:flex;align-items:center;justify-content:center;margin:0 auto var(--space-lg);">' +
+                        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>' +
+                    '</div>' +
+                    '<h3 style="font-size:var(--font-size-lg);font-weight:var(--font-weight-semibold);color:var(--color-text-primary);margin-bottom:var(--space-sm);">Confirm Logout</h3>' +
+                    '<p style="font-size:var(--font-size-sm);color:var(--color-text-secondary);margin-bottom:var(--space-xl);">Are you sure you want to log out of your session?</p>' +
+                    '<div style="display:flex;gap:var(--space-md);justify-content:center;">' +
+                        '<button onclick="auth.closeLogoutModal()" class="btn btn-secondary" style="flex:1;">Cancel</button>' +
+                        '<button onclick="auth.logout()" class="btn btn-danger" style="flex:1;background:var(--red-mid);color:#fff;border-color:var(--red-mid);">Yes, Logout</button>' +
+                    '</div>' +
+                '</div>';
+            document.body.appendChild(modal);
+        }
+        const modal = document.getElementById(MODAL_ID);
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeLogoutModal() {
+        const modal = document.getElementById('pv-logout-modal');
+        if (modal) {
+            modal.style.display = 'none';
+            document.body.style.overflow = '';
         }
     }
+
     // Public API
     return {
         login: login,
         logout: logout,
         confirmLogout: confirmLogout,
+        closeLogoutModal: closeLogoutModal,
         requireAuth: requireAuth,
         requireAdmin: requireAdmin,
         checkExistingSession: checkExistingSession,
