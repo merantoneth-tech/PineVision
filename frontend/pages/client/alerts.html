@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        try {
+          var s = JSON.parse(
+            localStorage.getItem("pinevision_settings") || "{}",
+          );
+          if (s.theme === "dark")
+            document.documentElement.classList.add("dark-mode");
+        } catch (e) {}
+      })();
+    </script>
+    <title>Alerts - PineVision</title>
+
+    <!-- CSS: Bootstrap first, then custom overrides -->
+    <link rel="stylesheet" href="../../bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="../../css/tokens.css" />
+    <link rel="stylesheet" href="../../css/layout.css" />
+    <link rel="stylesheet" href="../../css/components.css" />
+    <link rel="stylesheet" href="../../css/responsive.css" />
+
+    <style>
+      .alerts-section {
+        margin-bottom: var(--space-2xl);
+      }
+
+      .alerts-section-label {
+        display: flex;
+        align-items: center;
+        gap: var(--space-sm);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: var(--space-md);
+      }
+
+      .alert-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 20px;
+        height: 20px;
+        padding: 0 6px;
+        border-radius: var(--radius-pill);
+        font-size: 11px;
+        font-weight: var(--font-weight-semibold);
+      }
+
+      .alert-count.crit {
+        background-color: var(--red-bg);
+        color: var(--red);
+      }
+      .alert-count.warn {
+        background-color: var(--amber-bg);
+        color: var(--amber);
+      }
+      .alert-count.ok {
+        background-color: var(--green-bg);
+        color: var(--green);
+      }
+
+      .alert-foot-items {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-lg);
+      }
+
+      .alert-foot-item {
+        display: flex;
+        gap: var(--space-xs);
+        align-items: baseline;
+      }
+
+      .alert-foot-item strong {
+        font-family: var(--font-mono);
+        font-weight: var(--font-weight-medium);
+        color: var(--color-text-primary);
+      }
+
+      .no-alerts-card {
+        background-color: var(--surf);
+        border: var(--border-width-thin) solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-xl);
+        color: var(--muted);
+        font-size: var(--font-size-sm);
+        text-align: center;
+      }
+
+      @media (max-width: 580px) {
+        .modal .form-row {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* ── Metric Cards ──────────────────────────────────────── */
+      .mcard {
+        background-color: var(--surf);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-lg);
+        box-shadow: var(--shadow-xs);
+        transition: all var(--transition-fast);
+        height: 100%;
+      }
+
+      .mcard:hover {
+        box-shadow: var(--shadow-sm);
+        transform: translateY(-2px);
+      }
+
+      .mc-label {
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: var(--space-sm);
+      }
+
+      .mc-val {
+        font-size: var(--font-size-2xl);
+        font-weight: var(--font-weight-semibold);
+        font-family: var(--font-mono);
+        color: var(--color-text-primary);
+        margin-bottom: var(--space-xs);
+        line-height: 1.2;
+      }
+
+      .mc-sub {
+        font-size: var(--font-size-sm);
+        color: var(--muted);
+      }
+
+      .mc-red {
+        background-color: var(--red-bg);
+        border-color: rgba(239, 68, 68, 0.3);
+      }
+
+      .mc-red .mc-val {
+        color: var(--red);
+      }
+
+      .mc-amber {
+        background-color: var(--amber-bg);
+        border-color: rgba(217, 158, 50, 0.3);
+      }
+
+      .mc-amber .mc-val {
+        color: var(--amber);
+      }
+
+      .mc-green {
+        background-color: var(--green-bg);
+        border-color: rgba(76, 175, 120, 0.3);
+      }
+
+      .mc-green .mc-val {
+        color: var(--green);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="d-flex min-vh-100">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="sidebar-logo">
+            <img
+              src="/frontend/assets/images/pinevision-logo.svg"
+              alt="PineVision"
+              class="sidebar-logo-img"
+            />
+          </div>
+          <div class="sidebar-brand-text">
+            <div class="sidebar-brand-name">PineVision</div>
+            <div class="sidebar-brand-tagline">Farm Monitoring</div>
+          </div>
+        </div>
+
+        <button
+          class="sidebar-collapse-btn"
+          onclick="app.toggleSidebar()"
+          aria-label="Toggle sidebar"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="15,18 9,12 15,6" />
+          </svg>
+          <span class="nav-link-text">Collapse sidebar</span>
+        </button>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section">
+            <div class="nav-section-title">Main Menu</div>
+            <ul class="nav-links">
+              <li>
+                <a href="dashboard.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-dashboard.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Dashboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="blocks.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-leaf.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Fruit Blocks</span>
+                </a>
+              </li>
+              <li>
+                <a href="scans.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-clipboard.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Scan Log</span>
+                </a>
+              </li>
+              <li>
+                <a href="alerts.html" class="nav-link active">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-bell.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Alerts</span>
+                </a>
+              </li>
+              <li>
+                <a href="settings.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-cog.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Settings</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="nav-section">
+            <div class="nav-section-title">Field Operations</div>
+            <ul class="nav-links">
+              <li>
+                <a href="flight.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/flight.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Flight Missions</span>
+                </a>
+              </li>
+              <li>
+                <a href="reports.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/report.svg"
+                      alt="Flight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Reports</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-user">
+            <div class="sidebar-user-avatar">U</div>
+            <div class="sidebar-user-info">
+              <div class="sidebar-user-name">User</div>
+              <div class="sidebar-user-role">client</div>
+            </div>
+          </div>
+          <button class="btn-logout" onclick="auth.logout()">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span class="logout-text">Logout</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <div class="container-fluid py-4 px-4 page-container">
+          <!-- Page Header -->
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <h1 class="page-title d-flex align-items-center gap-2">
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    style="color: var(--green); flex-shrink: 0"
+                  >
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg
+                  >Alerts
+                </h1>
+                <p class="page-subtitle">
+                  Active flags, resolved issues, and threshold reference
+                </p>
+              </div>
+              <button class="btn btn-secondary" onclick="openThresholdModal()">
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <line x1="4" y1="21" x2="4" y2="14" />
+                  <line x1="4" y1="10" x2="4" y2="3" />
+                  <line x1="12" y1="21" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12" y2="3" />
+                  <line x1="20" y1="21" x2="20" y2="16" />
+                  <line x1="20" y1="12" x2="20" y2="3" />
+                  <line x1="1" y1="14" x2="7" y2="14" />
+                  <line x1="9" y1="8" x2="15" y2="8" />
+                  <line x1="17" y1="16" x2="23" y2="16" />
+                </svg>
+                <span>Alert Thresholds</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Summary Metric Cards -->
+          <div class="row row-cols-2 row-cols-md-4 g-3 mb-4" id="alert-metrics">
+            <!-- Populated by JavaScript -->
+          </div>
+
+          <!-- Critical Alerts -->
+          <div class="alerts-section">
+            <div class="alerts-section-label">
+              Critical
+              <span class="alert-count crit" id="count-crit">0</span>
+            </div>
+            <div id="alerts-crit"></div>
+          </div>
+
+          <!-- Watch Alerts -->
+          <div class="alerts-section">
+            <div class="alerts-section-label">
+              Watch
+              <span class="alert-count warn" id="count-warn">0</span>
+            </div>
+            <div id="alerts-warn"></div>
+          </div>
+
+          <!-- Resolved Alerts -->
+          <div class="alerts-section">
+            <div class="alerts-section-label">
+              Resolved
+              <span class="alert-count ok" id="count-ok">0</span>
+            </div>
+            <div id="alerts-ok"></div>
+          </div>
+
+          <!-- Threshold Reference Table -->
+          <div class="tcard mb-5">
+            <div class="thead-row">
+              <h3 class="thead-title">Threshold Reference</h3>
+            </div>
+            <div class="twrap">
+              <table>
+                <colgroup>
+                  <col style="width: 28%" />
+                  <col style="width: 24%" />
+                  <col style="width: 24%" />
+                  <col style="width: 24%" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th>Watch threshold</th>
+                    <th>Critical threshold</th>
+                    <th>Farm average</th>
+                  </tr>
+                </thead>
+                <tbody id="threshold-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- ALERT THRESHOLDS MODAL -->
+    <div id="threshold-modal" class="modal">
+      <div class="modal-content" style="max-width: 520px">
+        <div class="modal-header">
+          <h2 class="modal-title">Alert Thresholds</h2>
+          <button class="modal-close" onclick="closeThresholdModal()">
+            &times;
+          </button>
+        </div>
+        <form id="threshold-form" onsubmit="handleSaveThresholds(event)">
+          <div class="modal-body">
+            <div class="form-error" id="threshold-form-error"></div>
+
+            <p class="threshold-section-label">Bearing Rate</p>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="t-bearing-watch"
+                  >Watch — below (%)</label
+                >
+                <input
+                  type="number"
+                  id="t-bearing-watch"
+                  name="t-bearing-watch"
+                  class="form-input"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                />
+                <span class="form-hint"
+                  >Alert when bearing rate falls below this value</span
+                >
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="t-bearing-crit"
+                  >Critical — below (%)</label
+                >
+                <input
+                  type="number"
+                  id="t-bearing-crit"
+                  name="t-bearing-crit"
+                  class="form-input"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                />
+                <span class="form-hint"
+                  >Critical alert when bearing rate falls below this</span
+                >
+              </div>
+            </div>
+
+            <p class="threshold-section-label">Non-Bearing Rate</p>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="t-nonbearing-watch"
+                  >Watch — above (%)</label
+                >
+                <input
+                  type="number"
+                  id="t-nonbearing-watch"
+                  name="t-nonbearing-watch"
+                  class="form-input"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="t-nonbearing-crit"
+                  >Critical — above (%)</label
+                >
+                <input
+                  type="number"
+                  id="t-nonbearing-crit"
+                  name="t-nonbearing-crit"
+                  class="form-input"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                />
+              </div>
+            </div>
+
+            <p class="threshold-section-label">Non-Viable Rate</p>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="t-disco-watch"
+                  >Watch — above (%)</label
+                >
+                <input
+                  type="number"
+                  id="t-disco-watch"
+                  name="t-disco-watch"
+                  class="form-input"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="t-disco-crit"
+                  >Critical — above (%)</label
+                >
+                <input
+                  type="number"
+                  id="t-disco-crit"
+                  name="t-disco-crit"
+                  class="form-input"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              onclick="closeThresholdModal()"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">
+              Save Thresholds
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+    <!-- Bootstrap JS -->
+    <script src="../../bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Application JavaScript -->
+    <script src="../../js/auth.js"></script>
+    <script src="../../js/utils.js"></script>
+    <script src="../../js/cache.js"></script>
+    <script src="../../js/alerts.js"></script>
+
+    <script>
+
+      document.addEventListener("DOMContentLoaded", async function () {
+        console.log("=== DEBUG START ===");
+
+        // 1. Check if initPage exists
+        console.log("initPage exists:", typeof window.initPage);
+
+        // 2. Check Firebase
+        console.log("Firebase exists:", typeof firebase);
+        console.log("Firestore exists:", typeof firebase?.firestore);
+
+        // 3. Check auth
+        console.log("auth exists:", typeof auth);
+        console.log("getCurrentUser:", typeof auth?.getCurrentUser);
+
+        // 4. Check current user
+        const user = auth?.getCurrentUser?.();
+        console.log("Current user:", user);
+
+        // 5. Check utils
+        console.log("utils exists:", typeof utils);
+
+        // 6. Try calling initPage
+        try {
+          await window.initPage();
+          console.log("initPage completed successfully");
+        } catch (err) {
+          console.error("initPage threw an error:", err);
+        }
+
+        // 7. Check DOM elements exist
+        console.log(
+          "alert-metrics el:",
+          document.getElementById("alert-metrics"),
+        );
+        console.log("alerts-crit el:", document.getElementById("alerts-crit"));
+        console.log(
+          "threshold-tbody el:",
+          document.getElementById("threshold-tbody"),
+        );
+
+        console.log("=== DEBUG END ===");
+      });
+    </script>
+  </body>
+</html>

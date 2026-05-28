@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        try {
+          var s = JSON.parse(
+            localStorage.getItem("pinevision_settings") || "{}",
+          );
+          if (s.theme === "dark")
+            document.documentElement.classList.add("dark-mode");
+        } catch (e) {}
+      })();
+    </script>
+    <title>Settings - PineVision</title>
+
+    <!-- CSS: Bootstrap first, then custom overrides -->
+    <link rel="stylesheet" href="../../bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="../../css/tokens.css" />
+    <link rel="stylesheet" href="../../css/layout.css" />
+    <link rel="stylesheet" href="../../css/components.css" />
+
+    <style>
+      .settings-section {
+        background: var(--surf);
+        border: var(--border-width-thin) solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-xl);
+        margin-bottom: var(--space-xl);
+      }
+
+      .settings-section-title {
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-semibold);
+        color: var(--color-text-primary);
+        margin-bottom: var(--space-md);
+      }
+
+      .settings-section-desc {
+        font-size: var(--font-size-sm);
+        color: var(--muted);
+        margin-bottom: var(--space-xl);
+      }
+
+      .setting-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--space-lg) 0;
+        border-bottom: var(--border-width-thin) solid var(--border);
+      }
+
+      .setting-item:last-child {
+        border-bottom: none;
+      }
+
+      .setting-label {
+        flex: 1;
+      }
+
+      .setting-label-text {
+        font-size: var(--font-size-base);
+        font-weight: var(--font-weight-medium);
+        color: var(--color-text-primary);
+        margin-bottom: var(--space-xs);
+      }
+
+      .setting-label-desc {
+        font-size: var(--font-size-sm);
+        color: var(--muted);
+      }
+
+      .setting-control {
+        flex-shrink: 0;
+        margin-left: var(--space-xl);
+      }
+
+      /* Toggle Switch */
+      .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 52px;
+        height: 28px;
+      }
+
+      .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--color-background-secondary);
+        border: var(--border-width-thin) solid var(--border);
+        transition: 0.3s;
+        border-radius: 28px;
+      }
+
+      .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background-color: var(--surf);
+        transition: 0.3s;
+        border-radius: 50%;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+
+      input:checked + .toggle-slider {
+        background-color: var(--green);
+        border-color: var(--green);
+      }
+
+      input:checked + .toggle-slider:before {
+        transform: translateX(24px);
+        background-color: white;
+      }
+
+      /* Radio Buttons */
+      .radio-group {
+        display: flex;
+        gap: var(--space-md);
+        flex-wrap: wrap;
+      }
+
+      .radio-option {
+        position: relative;
+      }
+
+      .radio-option input[type="radio"] {
+        position: absolute;
+        opacity: 0;
+      }
+
+      .radio-option label {
+        display: flex;
+        align-items: center;
+        gap: var(--space-sm);
+        padding: var(--space-sm) var(--space-lg);
+        border: var(--border-width-thin) solid var(--border);
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        font-size: var(--font-size-sm);
+        background-color: var(--surf);
+        transition: all var(--transition-fast);
+      }
+
+      .radio-option input:checked + label {
+        background-color: var(--green-bg);
+        border-color: var(--green);
+        color: var(--green);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .radio-option label:hover {
+        border-color: var(--color-border-primary);
+      }
+
+      .preview-box {
+        background: var(--surf2);
+        border: var(--border-width-thin) solid var(--border);
+        border-radius: var(--radius-md);
+        padding: var(--space-lg);
+        margin-top: var(--space-lg);
+      }
+
+      .preview-title {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--muted);
+        margin-bottom: var(--space-md);
+      }
+
+      .preview-sample {
+        font-size: var(--font-size-base);
+        color: var(--color-text-primary);
+        line-height: var(--line-height-normal);
+      }
+
+      @media (max-width: 580px) {
+        .setting-item {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: var(--space-md);
+        }
+
+        .setting-control {
+          margin-left: 0;
+          width: 100%;
+        }
+
+        .radio-group {
+          width: 100%;
+        }
+
+        .radio-option {
+          flex: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="d-flex min-vh-100">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="sidebar-logo">
+            <img
+              src="/frontend/assets/images/pinevision-logo.svg"
+              alt="PineVision"
+              class="sidebar-logo-img"
+            />
+          </div>
+          <div class="sidebar-brand-text">
+            <div class="sidebar-brand-name">PineVision</div>
+            <div class="sidebar-brand-tagline">Farm Monitoring</div>
+          </div>
+        </div>
+
+        <button
+          class="sidebar-collapse-btn"
+          onclick="app.toggleSidebar()"
+          aria-label="Toggle sidebar"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="15,18 9,12 15,6" />
+          </svg>
+          <span class="nav-link-text">Collapse sidebar</span>
+        </button>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section">
+            <div class="nav-section-title">Main Menu</div>
+            <ul class="nav-links">
+              <li>
+                <a href="dashboard.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-dashboard.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Dashboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="blocks.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-leaf.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Fruit Blocks</span>
+                </a>
+              </li>
+              <li>
+                <a href="scans.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-clipboard.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Scan Log</span>
+                </a>
+              </li>
+              <li>
+                <a href="alerts.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-bell.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Alerts</span>
+                </a>
+              </li>
+              <li>
+                <a href="settings.html" class="nav-link active">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-cog.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Settings</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="nav-section">
+            <div class="nav-section-title">Field Operations</div>
+            <ul class="nav-links">
+              <li>
+                <a href="flight.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/flight.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Flight Missions</span>
+                </a>
+              </li>
+              <li>
+                <a href="reports.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/report.svg"
+                      alt="Flight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Reports</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-user">
+            <div class="sidebar-user-avatar">U</div>
+            <div class="sidebar-user-info">
+              <div class="sidebar-user-name">User</div>
+              <div class="sidebar-user-role">client</div>
+            </div>
+          </div>
+          <button class="btn-logout" onclick="auth.logout()">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span class="logout-text">Logout</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <div class="container-fluid py-4 px-4 page-container">
+          <!-- Page Header -->
+          <div class="mb-4">
+            <h1 class="page-title d-flex align-items-center gap-2">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                style="color: var(--green); flex-shrink: 0"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                /></svg
+              >Settings
+            </h1>
+            <p class="page-subtitle">Customize your PineVision experience</p>
+          </div>
+
+          <!-- Appearance Settings -->
+          <div class="settings-section">
+            <h2 class="settings-section-title">Appearance</h2>
+            <p class="settings-section-desc">
+              Customize the look and feel of the application
+            </p>
+
+            <!-- Dark Mode Toggle -->
+            <div class="setting-item">
+              <div class="setting-label">
+                <div class="setting-label-text">Dark Mode</div>
+                <div class="setting-label-desc">
+                  Switch between light and dark theme
+                </div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input
+                    type="checkbox"
+                    id="theme-toggle"
+                    onchange="handleThemeToggle()"
+                  />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Font Size -->
+            <div class="setting-item">
+              <div class="setting-label">
+                <div class="setting-label-text">Font Size</div>
+                <div class="setting-label-desc">
+                  Adjust text size for better readability
+                </div>
+              </div>
+              <div class="setting-control">
+                <div class="radio-group">
+                  <div class="radio-option">
+                    <input
+                      type="radio"
+                      id="font-small"
+                      name="font-size"
+                      value="small"
+                      onchange="handleFontSizeChange('small')"
+                    />
+                    <label for="font-small">Small</label>
+                  </div>
+                  <div class="radio-option">
+                    <input
+                      type="radio"
+                      id="font-medium"
+                      name="font-size"
+                      value="medium"
+                      onchange="handleFontSizeChange('medium')"
+                      checked
+                    />
+                    <label for="font-medium">Medium</label>
+                  </div>
+                  <div class="radio-option">
+                    <input
+                      type="radio"
+                      id="font-large"
+                      name="font-size"
+                      value="large"
+                      onchange="handleFontSizeChange('large')"
+                    />
+                    <label for="font-large">Large</label>
+                  </div>
+                  <div class="radio-option">
+                    <input
+                      type="radio"
+                      id="font-xlarge"
+                      name="font-size"
+                      value="xlarge"
+                      onchange="handleFontSizeChange('xlarge')"
+                    />
+                    <label for="font-xlarge">XL</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Preview -->
+            <div class="preview-box">
+              <div class="preview-title">Preview</div>
+              <div class="preview-sample">
+                <p style="margin-bottom: var(--space-sm)">
+                  <strong>Sample Text:</strong> This is how your text will
+                  appear with the selected settings.
+                </p>
+                <p style="font-family: var(--font-mono); color: var(--muted)">
+                  Bearing Rate: 87.5% | Non-Viable: 4.3%
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Account Settings -->
+          <div class="settings-section">
+            <h2 class="settings-section-title">Account</h2>
+            <p class="settings-section-desc">Manage your account preferences</p>
+
+            <div class="setting-item">
+              <div class="setting-label">
+                <div class="setting-label-text">Username</div>
+                <div class="setting-label-desc" id="current-username">
+                  Loading...
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-label">
+                <div class="setting-label-text">Role</div>
+                <div class="setting-label-desc" id="current-role">
+                  Loading...
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reset Settings -->
+          <div class="settings-section">
+            <h2 class="settings-section-title">Reset</h2>
+            <p class="settings-section-desc">Restore default settings</p>
+
+            <button class="btn btn-secondary" onclick="handleResetSettings()">
+              <span>🔄</span>
+              <span>Reset to Default</span>
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+    <!-- Bootstrap JS -->
+    <script src="../../bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Application JavaScript -->
+    <script src="../../js/auth.js"></script>
+    <script src="../../js/utils.js"></script>
+    <script src="../../js/app.js"></script>
+
+    <script>
+      window.initPage = async function () {
+        console.log("🚀 Initializing Settings Page...");
+
+        // Mark "Settings" as active nav link
+        document
+          .querySelectorAll(".nav-link")
+          .forEach((link) => link.classList.remove("active"));
+        const settingsLink = document.querySelector('a[href="settings.html"]');
+        if (settingsLink) settingsLink.classList.add("active");
+
+        // Check authentication
+        const currentUser = auth.getCurrentUser();
+        if (!currentUser) {
+          window.location.href = "../auth/login.html";
+          return;
+        }
+
+        loadCurrentSettings();
+        await loadAccountInfo();
+      };
+
+      function loadCurrentSettings() {
+        const settings = utils.getSettings();
+        document.getElementById("theme-toggle").checked =
+          settings.theme === "dark";
+        const fontRadio = document.getElementById("font-" + settings.fontSize);
+        if (fontRadio) fontRadio.checked = true;
+      }
+
+      async function loadAccountInfo() {
+        try {
+          const currentUser = auth.getCurrentUser();
+
+          // Fetch user data from Firestore
+          const userDoc = await firebase
+            .firestore()
+            .collection("users")
+            .doc(currentUser.uid)
+            .get();
+
+          if (userDoc.exists) {
+            const userData = userDoc.data();
+
+            // Get full name
+            let fullName = "";
+            if (userData.fullName) {
+              fullName = userData.fullName;
+            } else if (userData.firstName && userData.lastName) {
+              fullName = `${userData.firstName} ${userData.lastName}`;
+            } else if (userData.firstName) {
+              fullName = userData.firstName;
+            } else if (userData.lastName) {
+              fullName = userData.lastName;
+            } else {
+              fullName = userData.email || "User";
+            }
+
+            // Get role
+            const role = userData.role || "client";
+
+            // Display in settings page
+            document.getElementById("current-username").textContent = fullName;
+            document.getElementById("current-role").textContent =
+              role.charAt(0).toUpperCase() + role.slice(1);
+
+            // Update sidebar user info
+            updateSidebarUserInfo(fullName, role);
+
+            console.log("✅ User info loaded:", fullName, role);
+          } else {
+            console.warn("⚠️ User document not found");
+            document.getElementById("current-username").textContent =
+              currentUser.email || "User";
+            document.getElementById("current-role").textContent = "Client";
+          }
+        } catch (error) {
+          console.error("❌ Error loading account info:", error);
+          document.getElementById("current-username").textContent =
+            "Error loading";
+          document.getElementById("current-role").textContent = "Error loading";
+        }
+      }
+
+      function updateSidebarUserInfo(fullName, role) {
+        // Get first name from full name
+        const firstName = fullName.split(" ")[0];
+
+        // Update sidebar user name
+        const sidebarUserName = document.querySelector(".sidebar-user-name");
+        if (sidebarUserName) {
+          sidebarUserName.textContent = firstName;
+        }
+
+        // Update sidebar user role
+        const sidebarUserRole = document.querySelector(".sidebar-user-role");
+        if (sidebarUserRole) {
+          sidebarUserRole.textContent = role;
+        }
+
+        // Update sidebar avatar with first letter
+        const sidebarAvatar = document.querySelector(".sidebar-user-avatar");
+        if (sidebarAvatar) {
+          sidebarAvatar.textContent = firstName.charAt(0).toUpperCase();
+        }
+      }
+
+      function handleThemeToggle() {
+        const newTheme = utils.toggleTheme();
+        utils.showToast(
+          "Theme changed to " + utils.getThemeLabel(newTheme),
+          "success",
+        );
+      }
+
+      function handleFontSizeChange(size) {
+        utils.applyFontSize(size);
+        utils.showToast(
+          "Font size changed to " + utils.getFontSizeLabel(size),
+          "success",
+        );
+      }
+
+      function handleResetSettings() {
+        if (
+          confirm("Are you sure you want to reset all settings to default?")
+        ) {
+          utils.applyTheme("light");
+          utils.applyFontSize("medium");
+          document.getElementById("theme-toggle").checked = false;
+          document.getElementById("font-medium").checked = true;
+          utils.showToast("Settings reset to default", "success");
+        }
+      }
+    </script>
+  </body>
+</html>

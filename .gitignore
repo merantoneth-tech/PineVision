@@ -1,0 +1,28 @@
+# Firebase credentials
+serviceAccountKey.json
+firebase-service-account.json
+*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PyTorch models (optional - if your best.pt is large)
+best.pt
+*.pt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

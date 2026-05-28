@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        try {
+          var s = JSON.parse(
+            localStorage.getItem("pinevision_settings") || "{}",
+          );
+          if (s.theme === "dark")
+            document.documentElement.classList.add("dark-mode");
+        } catch (e) {}
+      })();
+    </script>
+    <title>Scan Log - PineVision</title>
+
+    <!-- CSS: Bootstrap first, then custom overrides -->
+    <link rel="stylesheet" href="../../bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="../../css/tokens.css" />
+    <link rel="stylesheet" href="../../css/layout.css" />
+    <link rel="stylesheet" href="../../css/components.css" />
+    <link rel="stylesheet" href="../../css/responsive.css" />
+
+    <style>
+      .scan-entry {
+        background: white;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1.25rem 1.5rem;
+        display: flex;
+        gap: 1.5rem;
+        margin-bottom: 1rem;
+        transition: box-shadow 0.2s;
+        align-items: center;
+      }
+
+      .scan-entry:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+
+      .sdate {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-width: 60px;
+        flex-shrink: 0;
+      }
+
+      .sdate-day {
+        font-size: 1.75rem;
+        font-weight: 700;
+        line-height: 1;
+        color: #111827;
+        margin-bottom: 0.125rem;
+      }
+
+      .sdate-month {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+        margin-bottom: 0.125rem;
+      }
+
+      .sdate-year {
+        font-size: 0.7rem;
+        color: #9ca3af;
+      }
+
+      .sinfo {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+
+      .sinfo-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #111827;
+        margin: 0;
+      }
+
+      .spills {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .sstats {
+        display: flex;
+        gap: 1.25rem;
+        flex-wrap: wrap;
+        font-size: 0.8125rem;
+        color: #6b7280;
+        align-items: center;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.25rem 0.625rem;
+        border-radius: 4px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      .badge.good {
+        background-color: #d1fae5;
+        color: #065f46;
+      }
+
+      .badge.warn {
+        background-color: #fef3c7;
+        color: #92400e;
+      }
+
+      .badge.yellow {
+        background-color: #fef9c3;
+        color: #854d0e;
+      }
+
+      .bdot {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .badge.good .bdot {
+        background-color: #10b981;
+      }
+
+      .badge.warn .bdot {
+        background-color: #f59e0b;
+      }
+
+      .badge.yellow .bdot {
+        background-color: #eab308;
+      }
+
+      .spill-value {
+        font-family: var(--font-mono);
+        font-weight: 600;
+      }
+
+      .sstats strong {
+        font-family: var(--font-mono);
+        font-weight: 600;
+        color: #111827;
+      }
+
+      /* ── Metric Cards ──────────────────────────────────────── */
+      .mcard {
+        background-color: var(--surf);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-lg);
+        box-shadow: var(--shadow-xs);
+        transition: all var(--transition-fast);
+        height: 100%;
+      }
+
+      .mcard:hover {
+        box-shadow: var(--shadow-sm);
+        transform: translateY(-2px);
+      }
+
+      .mc-label {
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: var(--space-sm);
+      }
+
+      .mc-val {
+        font-size: var(--font-size-2xl);
+        font-weight: var(--font-weight-semibold);
+        font-family: var(--font-mono);
+        color: var(--color-text-primary);
+        margin-bottom: var(--space-xs);
+        line-height: 1.2;
+      }
+
+      .mc-sub {
+        font-size: var(--font-size-sm);
+        color: var(--muted);
+      }
+
+      /* Colored metric cards */
+      .mc-green {
+        background-color: var(--green-bg);
+        border-color: rgba(76, 175, 120, 0.3);
+      }
+
+      .mc-green .mc-val {
+        color: var(--green);
+      }
+
+      .mc-amber {
+        background-color: var(--amber-bg);
+        border-color: rgba(217, 158, 50, 0.3);
+      }
+
+      .mc-amber .mc-val {
+        color: var(--amber);
+      }
+
+      .mc-yellow {
+        background-color: var(--yellow-bg);
+        border-color: rgba(229, 187, 56, 0.3);
+      }
+
+      .mc-yellow .mc-val {
+        color: var(--yellow);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="d-flex min-vh-100">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="sidebar-logo">
+            <img
+              src="/frontend/assets/images/pinevision-logo.svg"
+              alt="PineVision"
+              class="sidebar-logo-img"
+            />
+          </div>
+          <div class="sidebar-brand-text">
+            <div class="sidebar-brand-name">PineVision</div>
+            <div class="sidebar-brand-tagline">Farm Monitoring</div>
+          </div>
+        </div>
+
+        <button
+          class="sidebar-collapse-btn"
+          onclick="app.toggleSidebar()"
+          aria-label="Toggle sidebar"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="15,18 9,12 15,6" />
+          </svg>
+          <span class="nav-link-text">Collapse sidebar</span>
+        </button>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section">
+            <div class="nav-section-title">Main Menu</div>
+            <ul class="nav-links">
+              <li>
+                <a href="dashboard.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-dashboard.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Dashboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="blocks.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-leaf.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Fruit Blocks</span>
+                </a>
+              </li>
+              <li>
+                <a href="scans.html" class="nav-link active">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-clipboard.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Scan Log</span>
+                </a>
+              </li>
+              <li>
+                <a href="alerts.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-bell.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Alerts</span>
+                </a>
+              </li>
+              <li>
+                <a href="settings.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-cog.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Settings</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="nav-section">
+            <div class="nav-section-title">Field Operations</div>
+            <ul class="nav-links">
+              <li>
+                <a href="flight.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/flight.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Flight Missions</span>
+                </a>
+              </li>
+              <li>
+                <a href="reports.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/report.svg"
+                      alt="Flight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Reports</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-user">
+            <div class="sidebar-user-avatar">U</div>
+            <div class="sidebar-user-info">
+              <div class="sidebar-user-name">User</div>
+              <div class="sidebar-user-role">client</div>
+            </div>
+          </div>
+          <button class="btn-logout" onclick="auth.logout()">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span class="logout-text">Logout</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <div class="container-fluid py-4 px-4 page-container">
+          <!-- Page Header -->
+          <div class="mb-4">
+            <h1 class="page-title d-flex align-items-center gap-2">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                style="color: var(--green); flex-shrink: 0"
+              >
+                <path
+                  d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+                />
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1" /></svg
+              >Scan Log
+            </h1>
+            <p class="page-subtitle">
+              Chronological history of all drone scan sessions
+            </p>
+          </div>
+
+          <!-- Summary Metric Cards -->
+          <div class="row row-cols-2 row-cols-md-4 g-2 mb-4" id="scan-metrics">
+            <!-- Populated by JavaScript -->
+          </div>
+
+          <!-- Scan Entries List -->
+          <div id="scan-list" class="scan-list mb-5">
+            <!-- Populated by JavaScript -->
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+    <!-- Bootstrap JS -->
+    <script src="../../bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Application JavaScript -->
+    <script src="../../js/auth.js"></script>
+    <script src="../../js/utils.js"></script>
+    <script src="../../js/scans.js"></script>
+  </body>
+</html>

@@ -1,0 +1,1294 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        try {
+          var s = JSON.parse(
+            localStorage.getItem("pinevision_settings") || "{}",
+          );
+          if (s.theme === "dark")
+            document.documentElement.classList.add("dark-mode");
+        } catch (e) {}
+      })();
+    </script>
+    <title>Block Detail - PineVision</title>
+
+    <link rel="stylesheet" href="../../bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="../../css/tokens.css" />
+    <link rel="stylesheet" href="../../css/layout.css" />
+    <link rel="stylesheet" href="../../css/components.css" />
+
+    <style>
+      /* ── Back Button ──────────────────────────────────────── */
+      .btn-back {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-sm);
+        padding: var(--space-sm) var(--space-md);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        border: var(--border-width-base) solid var(--border);
+        border-radius: var(--radius-md);
+        background-color: var(--surf);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        font-family: var(--font-sans);
+        white-space: nowrap;
+        text-decoration: none;
+        line-height: 1.5;
+      }
+
+      .btn-back:hover {
+        border-color: var(--green);
+        color: var(--green);
+        background-color: var(--green-bg);
+      }
+
+      /* ── Page Header ──────────────────────────────────────── */
+      .block-page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: var(--space-lg);
+        flex-wrap: wrap;
+        margin-bottom: var(--space-xl);
+      }
+
+      /* Stack back button above block identity vertically */
+      .block-header-left {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-sm);
+      }
+
+      .block-title-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-md);
+        flex-wrap: wrap;
+      }
+
+      .block-page-title {
+        font-size: var(--font-size-2xl);
+        font-weight: var(--font-weight-semibold);
+        color: var(--color-text-primary);
+        line-height: 1.25;
+        margin: 0;
+      }
+
+      .block-page-subtitle {
+        font-size: var(--font-size-sm);
+        color: var(--muted);
+        margin-top: var(--space-xs);
+      }
+
+      /* ── Info Cards (field info sections) ─────────────────── */
+      .info-card {
+        background-color: var(--surf);
+        border: 1.5px solid var(--color-border-secondary);
+        border-radius: var(--radius-lg);
+        padding: var(--space-xl);
+        height: 100%;
+        box-shadow: var(--shadow-xs);
+      }
+
+      .info-card-title {
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: var(--space-md);
+        padding-bottom: var(--space-sm);
+        border-bottom: var(--border-width-thin) solid var(--border);
+      }
+
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--space-sm) 0;
+        font-size: var(--font-size-sm);
+        border-bottom: var(--border-width-thin) solid var(--border);
+      }
+
+      .stat-row:last-child {
+        border-bottom: none;
+      }
+
+      .stat-label {
+        color: var(--muted);
+      }
+
+      .stat-value {
+        font-family: var(--font-mono);
+        font-weight: var(--font-weight-medium);
+        color: var(--color-text-primary);
+      }
+
+      /* ── Trend Modal Rows ─────────────────────────────────── */
+      .trend-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-md);
+        padding: 6px 0;
+        border-bottom: var(--border-width-thin) solid var(--border);
+      }
+
+      .trend-row:last-child {
+        border-bottom: none;
+      }
+
+      .trend-date {
+        font-size: var(--font-size-xs);
+        font-family: var(--font-mono);
+        color: var(--muted);
+        min-width: 52px;
+      }
+
+      .trend-bar-wrap {
+        flex: 1;
+      }
+
+      .trend-val {
+        font-size: var(--font-size-xs);
+        font-family: var(--font-mono);
+        font-weight: var(--font-weight-medium);
+        color: var(--color-text-primary);
+        min-width: 44px;
+        text-align: right;
+      }
+
+      /* ── Compact Trend Card ───────────────────────────────── */
+      .trend-compact-card .thead-row {
+        border-bottom: none;
+      }
+
+      .trend-view-hint {
+        font-size: var(--font-size-xs);
+        color: var(--muted);
+      }
+
+      /* ── PDF Icon Button ──────────────────────────────────── */
+      .pdf-icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border: none;
+        background: none;
+        color: var(--muted);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition:
+          color var(--transition-fast),
+          background-color var(--transition-fast);
+        flex-shrink: 0;
+      }
+
+      .pdf-icon-btn:hover {
+        color: var(--red);
+        background-color: var(--red-bg);
+      }
+
+      /* ── Yellow Button (New Scan → Drone View) ───────────────── */
+      .btn-yellow {
+        background-color: var(--yellow-mid);
+        color: var(--color-text-primary);
+      }
+
+      .btn-yellow:hover {
+        background-color: #d4ad28;
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-md);
+      }
+
+      /* ── Read-only operator field ─────────────────────────────── */
+      .form-input[readonly] {
+        background-color: var(--surf2);
+        color: var(--muted);
+        cursor: default;
+        border-style: dashed;
+      }
+
+      @media (max-width: 580px) {
+        .block-page-header {
+          flex-direction: column;
+        }
+        .block-header-buttons {
+          width: 100%;
+        }
+        .block-header-buttons .btn {
+          flex: 1;
+          justify-content: center;
+        }
+        .modal .form-row {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* ── Progress Bars ─────────────────────────────────────── */
+      .bar-wrap {
+        position: relative;
+        width: 100%;
+        height: 8px;
+        background-color: var(--surf2);
+        border-radius: var(--radius-pill);
+        overflow: hidden;
+        margin-bottom: 6px;
+      }
+
+      .bar-fill {
+        height: 100%;
+        border-radius: var(--radius-pill);
+        transition: width 0.3s ease;
+      }
+
+      .bar-label {
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-semibold);
+        font-family: var(--font-mono);
+        color: var(--color-text-primary);
+      }
+
+      /* ── Metric Cards ──────────────────────────────────────── */
+      .mcard {
+        background-color: var(--surf);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-lg);
+        box-shadow: var(--shadow-xs);
+        transition: all var(--transition-fast);
+        height: 100%;
+      }
+
+      .mcard:hover {
+        box-shadow: var(--shadow-sm);
+        transform: translateY(-2px);
+      }
+
+      .mc-label {
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: var(--space-sm);
+      }
+
+      .mc-val {
+        font-size: var(--font-size-2xl);
+        font-weight: var(--font-weight-semibold);
+        font-family: var(--font-mono);
+        color: var(--color-text-primary);
+        margin-bottom: var(--space-xs);
+        line-height: 1.2;
+      }
+
+      .mc-sub {
+        font-size: var(--font-size-sm);
+        color: var(--muted);
+      }
+
+      /* Colored metric cards */
+      .mc-green {
+        background-color: var(--green-bg);
+        border-color: rgba(76, 175, 120, 0.3);
+      }
+
+      .mc-green .mc-val {
+        color: var(--green);
+      }
+
+      .mc-amber {
+        background-color: var(--amber-bg);
+        border-color: rgba(217, 158, 50, 0.3);
+      }
+
+      .mc-amber .mc-val {
+        color: var(--amber);
+      }
+
+      .mc-yellow {
+        background-color: var(--yellow-bg);
+        border-color: rgba(229, 187, 56, 0.3);
+      }
+
+      .mc-yellow .mc-val {
+        color: var(--yellow);
+      }
+
+      /* ── Table Styles ──────────────────────────────────────── */
+      .tcard {
+        background-color: var(--surf);
+        border: 1.5px solid var(--color-border-secondary);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-xs);
+        overflow: hidden;
+      }
+
+      .thead-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: var(--space-lg) var(--space-xl);
+        border-bottom: var(--border-width-base) solid var(--border);
+      }
+
+      .thead-title {
+        font-size: var(--font-size-base);
+        font-weight: var(--font-weight-semibold);
+        color: var(--color-text-primary);
+      }
+
+      .twrap {
+        overflow-x: auto;
+      }
+
+      .twrap table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .twrap th {
+        text-align: left;
+        padding: var(--space-md) var(--space-xl);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-semibold);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: var(--border-width-thin) solid var(--border);
+        background-color: var(--surf2);
+      }
+
+      .twrap td {
+        padding: var(--space-md) var(--space-xl);
+        font-size: var(--font-size-sm);
+        color: var(--color-text-primary);
+        border-bottom: var(--border-width-thin) solid var(--border);
+      }
+
+      .twrap tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      .twrap tbody tr:hover {
+        background-color: var(--surf2);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="d-flex min-vh-100">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="sidebar-logo">
+            <img
+              src="/frontend/assets/images/pinevision-logo.svg"
+              alt="PineVision"
+              class="sidebar-logo-img"
+            />
+          </div>
+          <div class="sidebar-brand-text">
+            <div class="sidebar-brand-name">PineVision</div>
+            <div class="sidebar-brand-tagline">Farm Monitoring</div>
+          </div>
+        </div>
+
+        <button
+          class="sidebar-collapse-btn"
+          onclick="app.toggleSidebar()"
+          aria-label="Toggle sidebar"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="15,18 9,12 15,6" />
+          </svg>
+          <span class="nav-link-text">Collapse sidebar</span>
+        </button>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section">
+            <div class="nav-section-title">Main Menu</div>
+            <ul class="nav-links">
+              <li>
+                <a href="dashboard.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-dashboard.svg"
+                      alt="Dashboard"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Dashboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="blocks.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-leaf.svg"
+                      alt="Fruit Blocks"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Fruit Blocks</span>
+                </a>
+              </li>
+              <li>
+                <a href="scans.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-clipboard.svg"
+                      alt="Scan Log"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Scan Log</span>
+                </a>
+              </li>
+              <li>
+                <a href="alerts.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-bell.svg"
+                      alt="Alerts"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Alerts</span>
+                </a>
+              </li>
+              <li>
+                <a href="settings.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-cog.svg"
+                      alt="Settings"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Settings</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="nav-section">
+            <div class="nav-section-title">Field Operations</div>
+            <ul class="nav-links">
+              <li>
+                <a href="flight.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/flight.svg"
+                      alt="Flight Missions"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Flight Missions</span>
+                </a>
+              </li>
+              <li>
+                <a href="reports.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/report.svg"
+                      alt="Reports"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Reports</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-user">
+            <div class="sidebar-user-avatar">U</div>
+            <div class="sidebar-user-info">
+              <div class="sidebar-user-name">User</div>
+              <div class="sidebar-user-role">client</div>
+            </div>
+          </div>
+          <button class="btn-logout" onclick="auth.logout()">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span class="logout-text">Logout</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <div class="container-fluid py-4 px-4 page-container">
+          <!-- Page Header -->
+          <div class="block-page-header">
+            <!-- Left: back arrow stacked above block identity -->
+            <div class="block-header-left">
+              <a href="blocks.html" class="btn-back">&#8592; All Blocks</a>
+              <div>
+                <div class="block-title-row">
+                  <h1 class="block-page-title" id="detail-title">Block</h1>
+                  <div id="detail-badge"></div>
+                </div>
+                <div class="block-page-subtitle" id="detail-subtitle"></div>
+              </div>
+            </div>
+            <!-- Right: action buttons -->
+            <div class="d-flex gap-2 block-header-buttons">
+              <button class="btn btn-secondary" onclick="openEditModal()">
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path
+                    d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+                  />
+                  <path
+                    d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+                  />
+                </svg>
+                Edit Block
+              </button>
+              <button class="btn btn-primary" onclick="openScheduleScanModal()">
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                Schedule Scan
+              </button>
+              <a
+                href="drone-view.html"
+                id="btn-new-scan"
+                class="btn btn-yellow"
+              >
+                <svg
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                New Scan
+              </a>
+            </div>
+          </div>
+
+          <!-- Metric Cards: Declared Pop. first, then Bearing, Non-Bearing, Discolored -->
+          <div
+            class="row row-cols-2 row-cols-md-4 g-3 mb-4"
+            id="metric-cards-row"
+          ></div>
+
+          <!-- Field Info Cards (two side-by-side) -->
+          <div class="row g-3 mb-4" id="field-info-row"></div>
+
+          <!-- Bearing Rate Trend (compact — click View to expand in modal) -->
+          <div class="tcard trend-compact-card mb-4">
+            <div
+              class="thead-row"
+              style="padding: var(--space-md) var(--space-xl)"
+            >
+              <div class="d-flex align-items-center gap-3">
+                <span class="thead-title">Bearing Rate Trend</span>
+                <span class="trend-view-hint">View Bearing Rate Trends</span>
+              </div>
+              <button
+                class="btn btn-sm btn-secondary"
+                onclick="openTrendModal()"
+              >
+                View
+              </button>
+            </div>
+          </div>
+
+          <!-- Fruit Condition Breakdown -->
+          <div class="tcard" id="condition-breakdown"></div>
+        </div>
+      </main>
+    </div>
+
+    <!-- EDIT BLOCK MODAL -->
+    <div id="edit-block-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Edit Block</h2>
+          <button class="modal-close" onclick="closeEditModal()">
+            &times;
+          </button>
+        </div>
+        <form id="edit-block-form" onsubmit="handleEditBlock(event)">
+          <div class="modal-body">
+            <div class="form-error" id="edit-form-error"></div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="edit-section">Section *</label>
+                <input
+                  type="text"
+                  id="edit-section"
+                  name="section"
+                  class="form-input"
+                  placeholder="e.g., North A"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="edit-area"
+                  >Area (hectares) *</label
+                >
+                <input
+                  type="number"
+                  id="edit-area"
+                  name="area"
+                  class="form-input"
+                  step="0.1"
+                  placeholder="e.g., 2.8"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="edit-planted"
+                  >Planting Date *</label
+                >
+                <input
+                  type="text"
+                  id="edit-planted"
+                  name="planted"
+                  class="form-input"
+                  placeholder="e.g., Jan 2024"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="edit-forcingDate"
+                  >Forcing Date *</label
+                >
+                <input
+                  type="text"
+                  id="edit-forcingDate"
+                  name="forcingDate"
+                  class="form-input"
+                  placeholder="e.g., Aug 15, 2024"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="edit-daf"
+                  >Growth Stage (DAF)</label
+                >
+                <input
+                  type="number"
+                  id="edit-daf"
+                  name="daf"
+                  class="form-input"
+                  placeholder="e.g., 245"
+                  min="0"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="edit-declaredPopulation"
+                  >Declared Population *</label
+                >
+                <input
+                  type="number"
+                  id="edit-declaredPopulation"
+                  name="declaredPopulation"
+                  class="form-input"
+                  placeholder="e.g., 12500"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              onclick="closeEditModal()"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- SCHEDULE SCAN MODAL -->
+    <div id="schedule-scan-modal" class="modal">
+      <div class="modal-content" style="max-width: 500px">
+        <div class="modal-header">
+          <h2 class="modal-title">Schedule Scan</h2>
+          <button class="modal-close" onclick="closeScheduleScanModal()">
+            &times;
+          </button>
+        </div>
+        <form id="schedule-scan-form" onsubmit="handleScheduleScan(event)">
+          <div class="modal-body">
+            <div class="form-error" id="scan-form-error"></div>
+            <div class="form-group">
+              <label class="form-label" for="scan-date">Scan Date *</label>
+              <input
+                type="date"
+                id="scan-date"
+                name="scanDate"
+                class="form-input"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="scan-operator">Operator</label>
+              <input
+                type="text"
+                id="scan-operator"
+                name="operator"
+                class="form-input"
+                readonly
+                aria-readonly="true"
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="scan-notes">Notes</label>
+              <input
+                type="text"
+                id="scan-notes"
+                name="notes"
+                class="form-input"
+                placeholder="Optional notes about this scan"
+              />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              onclick="closeScheduleScanModal()"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">Schedule Scan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- BEARING RATE TREND MODAL -->
+    <div id="trend-modal" class="modal">
+      <div class="modal-content" style="max-width: 540px">
+        <div class="modal-header">
+          <h2 class="modal-title">Bearing Rate Trends</h2>
+          <button class="modal-close" onclick="closeTrendModal()">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body" id="trend-modal-content">
+          <!-- populated by renderTrendModal() -->
+        </div>
+        <div
+          class="modal-footer"
+          style="justify-content: space-between; align-items: center"
+        >
+          <span style="font-size: var(--font-size-xs); color: var(--muted)"
+            >Last 6 scans · hover PDF icon to download</span
+          >
+          <button
+            type="button"
+            class="btn btn-secondary"
+            onclick="closeTrendModal()"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <!-- Bootstrap JS -->
+    <script src="../../bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Application JavaScript -->
+    <script src="../../js/auth.js"></script>
+    <script src="../../js/data.js"></script>
+    <script src="../../js/utils.js"></script>
+    <script src="../../js/app.js"></script>
+
+    <script>
+      if (!auth.requireAuth()) {
+        /* redirects */
+      }
+
+      let currentBlock = null;
+
+      window.initPage = async function () {
+        // Mark "Fruit Blocks" as the active nav link
+        document
+          .querySelectorAll(".nav-link")
+          .forEach((l) => l.classList.remove("active"));
+        const blocksLink = document.querySelector('a[href="blocks.html"]');
+        if (blocksLink) blocksLink.classList.add("active");
+
+        // Get block ID from URL
+        const blockId = new URLSearchParams(window.location.search).get("id");
+
+        if (!blockId) {
+          window.location.href = "blocks.html";
+          return;
+        }
+
+        // Fetch block from Firestore
+        await loadBlockFromFirebase(blockId);
+
+        if (!currentBlock) {
+          window.location.href = "blocks.html";
+          return;
+        }
+
+        setupModals();
+      };
+
+      // ── Load Block from Firebase ─────────────────────────────────
+
+      async function loadBlockFromFirebase(blockId) {
+        try {
+          console.log("📥 Loading block", blockId, "from Firestore...");
+
+          const blockDoc = await firebase
+            .firestore()
+            .collection("blocks")
+            .doc(blockId)
+            .get();
+
+          if (!blockDoc.exists) {
+            console.error("❌ Block not found");
+            return;
+          }
+
+          const blockData = blockDoc.data();
+
+          // Transform Firestore data to display format
+          currentBlock = {
+            id: blockDoc.id,
+            blockId: blockData.blockId,
+            blockName: blockData.blockName,
+            section: blockData.section,
+            area: blockData.area,
+
+            // Stats
+            bearing: blockData.bearingPercent || 0,
+            nonbearing: blockData.nonBearingPercent || 0,
+            plants: blockData.totalPineapples || 0,
+            nonViable: blockData.nonViable || 0, // Using nonViable field
+
+            // Details
+            stage: blockData.stage || blockData.blockName,
+            daf: blockData.daf || 0,
+            planted: blockData.planted || "Not set",
+            forcingDate: blockData.forcingDate || "Not set",
+            declaredPopulation:
+              blockData.declaredPopulation || blockData.totalPineapples || 0,
+            flightDuration: blockData.flightDuration || null,
+
+            // Metadata
+            totalScans: blockData.totalScans || 0,
+            lastScanned: blockData.lastScanned,
+          };
+
+          console.log("✅ Block loaded:", currentBlock);
+
+          // Update page title and render
+          document.title = currentBlock.blockName + " — PineVision";
+
+          const newScanBtn = document.getElementById("btn-new-scan");
+          if (newScanBtn)
+            newScanBtn.href = "drone-view.html?blockId=" + blockDoc.id;
+
+          renderPage(currentBlock);
+        } catch (error) {
+          console.error("❌ Error loading block:", error);
+        }
+      }
+
+      // ── Render ───────────────────────────────────────────────────────
+
+      function renderPage(block) {
+        const statusClass = getStatusClass(block.bearing);
+
+        document.getElementById("detail-title").textContent =
+          block.blockName || "Block " + block.blockId;
+        document.getElementById("detail-badge").innerHTML =
+          statusBadge(statusClass);
+        document.getElementById("detail-subtitle").textContent =
+          block.section +
+          " · " +
+          formatArea(block.area) +
+          (block.daf ? " · " + block.daf + " DAF" : "") +
+          (block.flightDuration
+            ? " · Last Flight: " + block.flightDuration
+            : "");
+
+        renderMetricCards(block);
+        renderFieldInfo(block);
+        renderConditionBreakdown(block);
+      }
+
+      function renderMetricCards(block) {
+        const bearingPlants = Math.round((block.bearing / 100) * block.plants);
+        const nonbearingPlants = Math.round(
+          (block.nonbearing / 100) * block.plants,
+        );
+        const nonViablePlants = Math.round(
+          (block.nonViable / 100) * block.plants,
+        );
+
+        document.getElementById("metric-cards-row").innerHTML =
+          buildMetricCard(
+            "Declared Pop.",
+            formatNumber(block.declaredPopulation) + " plants",
+            "registered population",
+            "",
+          ) +
+          buildMetricCard(
+            "Bearing",
+            formatPercent(block.bearing),
+            formatNumber(bearingPlants) + " plants",
+            "green",
+          ) +
+          buildMetricCard(
+            "Non-Bearing",
+            formatPercent(block.nonbearing),
+            formatNumber(nonbearingPlants) + " plants",
+            "amber",
+          ) +
+          buildMetricCard(
+            "Non-Viable",
+            formatPercent(block.nonViable),
+            formatNumber(nonViablePlants) + " plants",
+            "yellow",
+          );
+      }
+
+      function renderFieldInfo(block) {
+        document.getElementById("field-info-row").innerHTML = `
+            <div class="col-md-6">
+                <div class="info-card">
+                    <div class="info-card-title">General Details</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Block Name</span>
+                        <span class="stat-value">${block.blockName || block.blockId}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Section</span>
+                        <span class="stat-value">${block.section}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Area</span>
+                        <span class="stat-value">${formatArea(block.area)}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="info-card">
+                    <div class="info-card-title">Crop &amp; Growth Details</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Planting Date</span>
+                        <span class="stat-value">${block.planted}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Forcing Date</span>
+                        <span class="stat-value">${block.forcingDate}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Growth Stage (DAF)</span>
+                        <span class="stat-value">${block.daf} days</span>
+                    </div>
+                </div>
+            </div>`;
+      }
+
+      function renderConditionBreakdown(block) {
+        const bearingPlants = Math.round((block.bearing / 100) * block.plants);
+        const nonbearingPlants = Math.round(
+          (block.nonbearing / 100) * block.plants,
+        );
+        const nonViablePlants = Math.round(
+          (block.nonViable / 100) * block.plants,
+        );
+
+        document.getElementById("condition-breakdown").innerHTML = `
+        <div class="thead-row">
+            <span class="thead-title">Fruit Condition Breakdown</span>
+        </div>
+        <div class="twrap">
+            <table>
+                <colgroup>
+                    <col style="width:28%">
+                    <col style="width:13%">
+                    <col style="width:17%">
+                    <col style="width:42%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Condition</th>
+                        <th>%</th>
+                        <th>Plants</th>
+                        <th>Distribution</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge good"><span class="bdot"></span>Bearing</span></td>
+                        <td style="font-family:var(--font-mono);">${formatPercent(block.bearing)}</td>
+                        <td style="font-family:var(--font-mono);">${formatNumber(bearingPlants)}</td>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:var(--space-sm);">
+                                <div class="bar-wrap" style="margin-bottom:0;">
+                                    <div class="bar-fill" style="width:${block.bearing}%;background:var(--green);"></div>
+                                </div>
+                                <span style="font-family:var(--font-mono);font-size:var(--font-size-sm);color:var(--muted);min-width:45px;">${formatPercent(block.bearing)}</span>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge warn"><span class="bdot"></span>Non-Bearing</span></td>
+                        <td style="font-family:var(--font-mono);">${formatPercent(block.nonbearing)}</td>
+                        <td style="font-family:var(--font-mono);">${formatNumber(nonbearingPlants)}</td>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:var(--space-sm);">
+                                <div class="bar-wrap" style="margin-bottom:0;">
+                                    <div class="bar-fill" style="width:${block.nonbearing}%;background:var(--amber);"></div>
+                                </div>
+                                <span style="font-family:var(--font-mono);font-size:var(--font-size-sm);color:var(--muted);min-width:45px;">${formatPercent(block.nonbearing)}</span>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;
+                                         border-radius:var(--radius-pill);font-size:var(--font-size-xs);
+                                         font-weight:var(--font-weight-medium);
+                                         background-color:var(--yellow-bg);color:var(--yellow);">
+                                <span style="width:6px;height:6px;border-radius:50%;background-color:var(--yellow-mid);flex-shrink:0;"></span>
+                                Non-Viable
+                            </span>
+                        </td>
+                        <td style="font-family:var(--font-mono);">${formatPercent(block.nonViable)}</td>
+                        <td style="font-family:var(--font-mono);">${formatNumber(nonViablePlants)}</td>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:var(--space-sm);">
+                                <div class="bar-wrap" style="margin-bottom:0;">
+                                    <div class="bar-fill" style="width:${block.nonViable}%;background:var(--yellow);"></div>
+                                </div>
+                                <span style="font-family:var(--font-mono);font-size:var(--font-size-sm);color:var(--muted);min-width:45px;">${formatPercent(block.nonViable)}</span>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>`;
+      }
+      // ── Helper Functions ─────────────────────────────────────────
+
+      function getStatusClass(bearing) {
+        if (bearing >= 80) return "good";
+        if (bearing >= 60) return "warn";
+        return "crit";
+      }
+
+      function statusBadge(status) {
+        const labels = { good: "Healthy", warn: "Watch", crit: "Critical" };
+        const colors = { good: "good", warn: "warn", crit: "crit" };
+        return (
+          '<span class="badge ' +
+          colors[status] +
+          '"><span class="bdot"></span>' +
+          labels[status] +
+          "</span>"
+        );
+      }
+
+      function buildMetricCard(label, value, sub, color) {
+        const colorClass = color ? "mc-" + color : "";
+
+        // No progress bars at all
+        return `
+        <div class="col">
+            <div class="mcard ${colorClass}">
+                <div class="mc-label">${label}</div>
+                <div class="mc-val">${value}</div>
+                <div class="mc-sub">${sub}</div>
+            </div>
+        </div>`;
+      }
+
+      function buildInlineBar(percent, color) {
+        return `<div class="bar-wrap"><div class="bar-fill" style="width:${percent}%;background:${color};"></div></div><div class="bar-label">${percent.toFixed(1)}%</div>`;
+      }
+
+      function formatNumber(num) {
+        return num.toLocaleString("en-US");
+      }
+
+      function formatPercent(num) {
+        return num.toFixed(1) + "%";
+      }
+
+      function formatArea(area) {
+        return area + " ha";
+      }
+
+      // ── Trend Modal (Mock data for now) ─────────────────────────
+
+      function openTrendModal() {
+        if (!currentBlock) return;
+        renderTrendModal();
+        utils.showModal("trend-modal");
+      }
+
+      function closeTrendModal() {
+        utils.hideModal("trend-modal");
+      }
+
+      function renderTrendModal() {
+        // Mock historical data for now
+        const mockHistory = [
+          { date: "Mar 28", pct: 85.2 },
+          { date: "Apr 04", pct: 86.1 },
+          { date: "Apr 11", pct: 86.8 },
+          { date: "Apr 18", pct: 87.0 },
+          { date: "Apr 25", pct: 87.3 },
+          { date: "May 02", pct: 87.5 },
+        ];
+
+        document.getElementById("trend-modal-content").innerHTML = mockHistory
+          .map((entry) => {
+            const color =
+              entry.pct >= 80
+                ? "var(--green)"
+                : entry.pct >= 60
+                  ? "var(--amber)"
+                  : "var(--red)";
+            return `
+                <div class="trend-row">
+                    <div class="trend-date">${entry.date}</div>
+                    <div class="trend-bar-wrap">
+                        <div class="bar-wrap">
+                            <div class="bar-fill" style="width:${entry.pct}%; background-color:${color};"></div>
+                        </div>
+                    </div>
+                    <div class="trend-val">${entry.pct.toFixed(1)}%</div>
+                    <button class="pdf-icon-btn" title="Download PDF details">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                            <polyline points="10 9 9 9 8 9"/>
+                        </svg>
+                    </button>
+                </div>`;
+          })
+          .join("");
+      }
+
+      // ── Modal Helpers ────────────────────────────────────────────
+
+      function setupModals() {
+        utils.setupModalClose("edit-block-modal");
+        utils.setupModalClose("schedule-scan-modal");
+        utils.setupModalClose("trend-modal");
+      }
+
+      function openEditModal() {
+        // Edit functionality - to be implemented later
+        utils.showToast("Edit feature coming soon!", "info");
+      }
+
+      function closeEditModal() {
+        utils.hideModal("edit-block-modal");
+      }
+
+      function handleEditBlock(event) {
+        event.preventDefault();
+        utils.showToast("Block updated successfully! (Demo mode)", "success");
+        closeEditModal();
+      }
+
+      function openScheduleScanModal() {
+        utils.showToast("Schedule scan feature coming soon!", "info");
+      }
+
+      function closeScheduleScanModal() {
+        utils.hideModal("schedule-scan-modal");
+      }
+
+      function handleScheduleScan(event) {
+        event.preventDefault();
+        utils.showToast("Scan scheduled!", "success");
+        closeScheduleScanModal();
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>(function(){try{var s=JSON.parse(localStorage.getItem('pinevision_settings')||'{}');if(s.theme==='dark')document.documentElement.classList.add('dark-mode');}catch(e){}}());</script>
+    <title>Drone View - PineVision</title>
+
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="../../bootstrap/css/bootstrap.min.css">
+
+    <!-- PineVision Design System -->
+    <link rel="stylesheet" href="../../css/tokens.css">
+    <link rel="stylesheet" href="../../css/layout.css">
+    <link rel="stylesheet" href="../../css/components.css">
+    <link rel="stylesheet" href="../../css/responsive.css">
+
+    <!-- Page-Specific CSS -->
+    <link rel="stylesheet" href="../../css/drone-view.css">
+
+    <!-- Tabler Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+</head>
+<body>
+
+    <!-- ── Zone 1: Top Navigation Bar ──────────────────────── -->
+    <nav id="dv-topbar" class="navbar navbar-expand px-3 py-2" aria-label="Drone view navigation">
+        <div class="d-flex align-items-center gap-3 me-auto">
+            <button id="btn-back" class="dv-btn-back"
+                    aria-label="Back to Blocks View">
+                <i class="ti ti-arrow-left" aria-hidden="true"></i>
+            </button>
+            <img src="../../assets/images/pinevision-logo.svg"
+                 alt="PineVision" height="28" class="pv-logo">
+            <span class="dv-page-title">Drone View</span>
+        </div>
+
+        <div id="dv-status-indicator"
+             class="dv-status-idle d-flex align-items-center gap-2 me-3"
+             aria-live="polite">
+            <span class="dv-status-dot" aria-hidden="true"></span>
+            <span class="dv-status-label">No Signal</span>
+            <span id="dv-timer" class="dv-timer d-none" aria-label="Scan duration">00:00:00</span>
+        </div>
+
+        <div class="dv-topbar-actions d-flex gap-2">
+            <button id="btn-connect"
+                    class="btn dv-btn-connect"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-connect">
+                <i class="ti ti-wifi me-1" aria-hidden="true"></i> Connect Drone
+            </button>
+            <button id="btn-end-scan"
+                    class="btn dv-btn-end-scan d-none"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modal-end-scan">
+                <i class="ti ti-square-x me-1" aria-hidden="true"></i> End Scan
+            </button>
+        </div>
+    </nav>
+
+    <!-- ── Zone 2: Main Video Area ─────────────────────────── -->
+    <main id="dv-main">
+        <div id="drone-feed-wrapper">
+
+            <!-- HLS video element -->
+            <video id="drone-feed" autoplay muted playsinline></video>
+
+            <!-- Placeholder overlay (IDLE / FAILED) -->
+            <div id="dv-placeholder" class="dv-overlay dv-overlay--center">
+                <div class="dv-placeholder-inner">
+                    <img src="../../assets/icons/drone.svg"
+                         alt="" class="dv-drone-icon" aria-hidden="true">
+                    <p class="dv-placeholder-title">Awaiting Connection</p>
+                    <p class="dv-placeholder-hint">Click &ldquo;Connect Drone&rdquo; to begin a scan session</p>
+                </div>
+            </div>
+
+            <!-- Connecting spinner overlay (CONNECTING) -->
+            <div id="dv-connecting-overlay" class="dv-overlay dv-overlay--center d-none">
+                <div class="dv-spinner-wrapper">
+                    <div class="spinner-border dv-spinner" role="status">
+                        <span class="visually-hidden">Connecting to drone stream...</span>
+                    </div>
+                    <p class="dv-connecting-label mt-2">Connecting...</p>
+                </div>
+            </div>
+
+            <!-- Live badge overlay (ACTIVE) -->
+            <div id="dv-live-overlay" class="dv-overlay dv-overlay--bottom-left d-none">
+                <span class="dv-live-badge">
+                    <span class="dv-live-dot" aria-hidden="true"></span> LIVE
+                </span>
+                <span id="dv-stream-quality" class="dv-quality-label"></span>
+            </div>
+
+            <!-- Fullscreen toggle button -->
+            <button id="dv-fullscreen-btn" class="dv-fullscreen-btn"
+                    aria-label="Toggle fullscreen">
+                <i class="ti ti-maximize" aria-hidden="true"></i>
+            </button>
+
+        </div>
+    </main>
+
+    <!-- ── Zone 3: Statistics Panel ────────────────────────── -->
+    <footer id="dv-stats-panel" aria-label="Scan statistics">
+        <div class="container-fluid px-3 py-2">
+            <div class="row align-items-center g-2">
+
+                <!-- Pineapple Count -->
+                <div class="col">
+                    <div class="mc">
+                        <div class="mc-label">
+                            <i class="ti ti-plant me-1" aria-hidden="true"></i>Pineapple Count
+                        </div>
+                        <div class="mc-val" id="stat-total">—</div>
+                    </div>
+                </div>
+
+                <!-- Bearing -->
+                <div class="col">
+                    <div class="mc green">
+                        <div class="mc-label">
+                            <i class="ti ti-circle-check me-1" aria-hidden="true"></i>Bearing
+                        </div>
+                        <div class="mc-val" id="stat-bearing">—</div>
+                    </div>
+                </div>
+
+                <!-- Non-Bearing -->
+                <div class="col">
+                    <div class="mc amber">
+                        <div class="mc-label">
+                            <i class="ti ti-circle me-1" aria-hidden="true"></i>Non-Bearing
+                        </div>
+                        <div class="mc-val" id="stat-non-bearing">—</div>
+                    </div>
+                </div>
+
+                <!-- Discolored -->
+                <div class="col">
+                    <div class="mc yellow">
+                        <div class="mc-label">
+                            <i class="ti ti-alert-circle me-1" aria-hidden="true"></i>Non-Viable
+                        </div>
+                        <div class="mc-val" id="stat-discolored">—</div>
+                    </div>
+                </div>
+
+                <!-- Scan Progress -->
+                <div class="col-3">
+                    <div class="mc">
+                        <div class="mc-label d-flex justify-content-between">
+                            <span>Scan Progress</span>
+                            <span id="stat-progress-pct" class="dv-progress-pct">0%</span>
+                        </div>
+                        <div class="progress dv-progress-bar mt-1"
+                             role="progressbar"
+                             aria-valuenow="0"
+                             aria-valuemin="0"
+                             aria-valuemax="100"
+                             aria-label="Scan progress">
+                            <div class="progress-bar" id="stat-progress-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- End Scan Button (stats panel) -->
+                <div class="col-auto">
+                    <button id="btn-end-scan-stats"
+                            class="btn dv-btn-end-scan-sm d-none"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modal-end-scan">
+                        <i class="ti ti-square-x me-1" aria-hidden="true"></i>End Scan
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </footer>
+
+    <!-- ── Connect Drone Modal ──────────────────────────────── -->
+    <div class="modal fade" id="modal-connect" tabindex="-1"
+         aria-labelledby="modal-connect-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content dv-modal-content">
+
+                <div class="modal-header dv-modal-header">
+                    <h5 class="modal-title" id="modal-connect-title">
+                        <i class="ti ti-wifi me-2" aria-hidden="true"></i>Connect Drone
+                    </h5>
+                    <button type="button" class="btn-close dv-modal-close"
+                            data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body dv-modal-body">
+                    <div class="mb-3">
+                        <label for="input-rtmp-url" class="dv-input-label">
+                            RTMP Stream URL
+                        </label>
+                        <input type="text" id="input-rtmp-url"
+                               class="form-control dv-input"
+                               placeholder="rtmp://192.168.x.x/live/stream_key"
+                               autocomplete="off"
+                               spellcheck="false">
+                        <div id="input-rtmp-error" class="dv-input-error d-none"></div>
+                        <div class="dv-input-hint mt-1">
+                            Enter the RTMP push URL from your drone controller app.
+                        </div>
+                    </div>
+
+                    <!-- Connection error banner -->
+                    <div id="connect-error-banner" class="dv-error-banner d-none">
+                        <i class="ti ti-alert-circle me-2" aria-hidden="true"></i>
+                        <span id="connect-error-message">Unable to connect to stream.</span>
+                    </div>
+                </div>
+
+                <div class="modal-footer dv-modal-footer">
+                    <button type="button" class="btn dv-btn-cancel"
+                            data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="btn-connect-submit" class="btn dv-btn-primary">
+                        <span id="btn-connect-label">Connect</span>
+                        <span id="btn-connect-spinner"
+                              class="spinner-border spinner-border-sm ms-2 d-none"
+                              role="status" aria-hidden="true"></span>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ── End Scan Confirmation Modal ─────────────────────── -->
+    <div class="modal fade" id="modal-end-scan" tabindex="-1"
+         aria-labelledby="modal-end-scan-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content dv-modal-content">
+
+                <div class="modal-header dv-modal-header">
+                    <h5 class="modal-title" id="modal-end-scan-title">
+                        <i class="ti ti-square-x me-2" aria-hidden="true"></i>End Scan Session
+                    </h5>
+                    <button type="button" class="btn-close dv-modal-close"
+                            data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body dv-modal-body">
+
+                    <!-- Scan summary (populated by JS) -->
+                    <div class="dv-scan-summary mb-3">
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <div class="dv-summary-item">
+                                    <span class="dv-summary-label">Duration</span>
+                                    <span class="dv-summary-val" id="summary-duration">—</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="dv-summary-item">
+                                    <span class="dv-summary-label">Total Detected</span>
+                                    <span class="dv-summary-val" id="summary-total">—</span>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="dv-summary-item green">
+                                    <span class="dv-summary-label">Bearing</span>
+                                    <span class="dv-summary-val" id="summary-bearing">—</span>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="dv-summary-item amber">
+                                    <span class="dv-summary-label">Non-Bearing</span>
+                                    <span class="dv-summary-val" id="summary-non-bearing">—</span>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="dv-summary-item yellow">
+                                    <span class="dv-summary-label">Non-Viable</span>
+                                    <span class="dv-summary-val" id="summary-discolored">—</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p class="dv-confirm-text">
+                        End this scan session? The drone stream will disconnect and all
+                        statistics will be saved to the session log.
+                    </p>
+
+                </div>
+
+                <div class="modal-footer dv-modal-footer">
+                    <button type="button" class="btn dv-btn-cancel"
+                            data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="btn-confirm-end-scan"
+                            class="btn dv-btn-danger">
+                        <span id="btn-end-label">End Scan</span>
+                        <span id="btn-end-spinner"
+                              class="spinner-border spinner-border-sm ms-2 d-none"
+                              role="status" aria-hidden="true"></span>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Scripts ─────────────────────────────────────────── -->
+    <script src="../../bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <!-- hls.js — replace src with local ../../assets/libs/hls.min.js once downloaded -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
+
+    <!-- PineVision JS -->
+    <script src="../../js/utils.js"></script>
+    <script src="../../js/auth.js"></script>
+    <script src="../../js/app.js"></script>
+
+    <!-- Page-Specific JS -->
+    <script src="../../js/drone-view.js"></script>
+
+</body>
+</html>

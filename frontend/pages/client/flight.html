@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        try {
+          var s = JSON.parse(
+            localStorage.getItem("pinevision_settings") || "{}",
+          );
+          if (s.theme === "dark")
+            document.documentElement.classList.add("dark-mode");
+        } catch (e) {}
+      })();
+    </script>
+    <title>Flight Missions - PineVision</title>
+
+    <!-- CSS: Bootstrap first, then custom overrides -->
+    <link rel="stylesheet" href="../../bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="../../css/tokens.css" />
+    <link rel="stylesheet" href="../../css/layout.css" />
+    <link rel="stylesheet" href="../../css/components.css" />
+
+    <style>
+      /* ── Filter Bar ─────────────────────────────────────── */
+      .filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-md);
+        align-items: center;
+        padding: var(--space-md) var(--space-lg);
+        background-color: var(--surf);
+        border: var(--border-width-base) solid var(--border);
+        border-radius: var(--radius-lg);
+        margin-bottom: var(--space-lg);
+      }
+
+      .filter-label {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .filter-btn {
+        padding: 4px var(--space-md);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        border: var(--border-width-base) solid var(--border);
+        border-radius: var(--radius-pill);
+        background-color: var(--surf2);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        font-family: var(--font-sans);
+        line-height: 1.5;
+      }
+
+      .filter-btn:hover {
+        border-color: var(--green);
+        color: var(--green);
+      }
+
+      .filter-btn.active {
+        background-color: var(--green-bg);
+        border-color: var(--green);
+        color: var(--green);
+      }
+
+      /* ══════════════════════════════════════════════════════════
+   MISSION CARD
+   ══════════════════════════════════════════════════════════ */
+
+      .mission-card {
+        background-color: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+        transition: all 0.2s;
+        margin-bottom: 0.75rem;
+      }
+
+      .mission-card:hover {
+        border-color: #d1d5db;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        transform: translateY(-1px);
+        cursor: pointer;
+      }
+
+      /* Main row (first line) */
+      .mission-card-main {
+        display: flex;
+        align-items: flex-start;
+        gap: 2rem;
+      }
+
+      /* Left column: identity */
+      .mission-card-identity {
+        flex-shrink: 0;
+        min-width: 200px;
+        padding-right: 2rem;
+        border-right: 1px solid #e5e7eb;
+      }
+
+      .mission-id {
+        font-size: 0.6875rem;
+        color: #9ca3af;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        margin-bottom: 0.25rem;
+      }
+
+      .mission-date {
+        font-size: 1.0625rem;
+        font-weight: 600;
+        color: #111827;
+        margin-bottom: 0.125rem;
+        line-height: 1.3;
+      }
+
+      .mission-title {
+        font-size: 0.8125rem;
+        color: #6b7280;
+        font-weight: 400;
+        line-height: 1.4;
+      }
+
+      /* Middle: stats grid */
+      .mission-stats-grid {
+        display: flex;
+        align-items: flex-start;
+        gap: 2.5rem;
+        flex: 1;
+        flex-wrap: nowrap;
+      }
+
+      .stat-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .stat-label {
+        font-size: 0.6875rem;
+        color: #9ca3af;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+
+      .stat-value {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #111827;
+        font-family: "Courier New", Courier, monospace;
+        line-height: 1.4;
+      }
+
+      /* Right: status badge */
+      .mission-card-status {
+        flex-shrink: 0;
+        margin-left: 1.5rem;
+      }
+
+      /* Notes row (second line) */
+      .mission-card-notes {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin-top: 1rem;
+        padding-left: calc(200px + 2rem);
+      }
+
+      .notes-label {
+        font-size: 0.6875rem;
+        color: #9ca3af;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+
+      .notes-value {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #111827;
+        font-family: "Courier New", Courier, monospace;
+        line-height: 1.4;
+      }
+
+      /* Status badge */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.375rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      .badge .bdot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .badge.scheduled {
+        background-color: #d1fae5;
+        color: #065f46;
+      }
+
+      .badge.scheduled .bdot {
+        background-color: #10b981;
+      }
+
+      .badge.completed {
+        background-color: #e5e7eb;
+        color: #6b7280;
+      }
+
+      .badge.completed .bdot {
+        background-color: #9ca3af;
+      }
+
+      .badge.in-progress {
+        background-color: #fef3c7;
+        color: #92400e;
+      }
+
+      .badge.in-progress .bdot {
+        background-color: #f59e0b;
+      }
+
+      .badge.cancelled {
+        background-color: #fee2e2;
+        color: #991b1b;
+      }
+
+      .badge.cancelled .bdot {
+        background-color: #dc2626;
+      }
+
+      /* Responsive */
+      @media (max-width: 1400px) {
+        .mission-stats-grid {
+          gap: 2rem;
+        }
+
+        .mission-card-main {
+          gap: 1.5rem;
+        }
+      }
+
+      @media (max-width: 1200px) {
+        .mission-stats-grid {
+          gap: 1.5rem;
+        }
+      }
+
+      @media (max-width: 768px) {
+        .mission-card-main {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 1.5rem;
+        }
+
+        .mission-card-identity {
+          padding-right: 0;
+          padding-bottom: 1.5rem;
+          border-right: none;
+          border-bottom: 1px solid #e5e7eb;
+          width: 100%;
+        }
+
+        .mission-stats-grid {
+          width: 100%;
+          flex-wrap: wrap;
+          gap: 1rem 2rem;
+        }
+
+        .mission-card-status {
+          margin-left: 0;
+        }
+
+        .mission-card-notes {
+          padding-left: 0;
+          margin-top: 1rem;
+        }
+      }
+
+      @media (max-width: 576px) {
+        .stat-item {
+          min-width: 100%;
+        }
+      }
+
+      /* ══════════════════════════════════════════════════════════
+   MODAL STYLES
+   ══════════════════════════════════════════════════════════ */
+
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(4px);
+      }
+
+      .modal.show {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal-content {
+        background: white;
+        border-radius: 8px;
+        width: 90%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .modal-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        font-size: 1.75rem;
+        cursor: pointer;
+        color: #9ca3af;
+        padding: 0;
+        width: 32px;
+        height: 32px;
+      }
+
+      .modal-close:hover {
+        color: #111827;
+      }
+
+      .modal-body {
+        padding: 1.5rem;
+        padding-bottom: 0;
+      }
+
+      .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        padding: 1.5rem;
+        border-top: 1px solid #e5e7eb;
+        background-color: #f9fafb;
+        margin-top: 1.5rem;
+      }
+
+      /* Form Styles */
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1rem;
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 1rem;
+      }
+
+      .form-label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        margin-bottom: 0.375rem;
+        color: #374151;
+      }
+
+      .form-input,
+      .form-select,
+      .form-textarea {
+        padding: 0.625rem 0.875rem;
+        font-size: 0.9375rem;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        transition: all 0.2s;
+        font-family: var(--font-mono);
+      }
+
+      .form-input:focus,
+      .form-select:focus,
+      .form-textarea:focus {
+        outline: none;
+        border-color: var(--green);
+        box-shadow: 0 0 0 3px rgba(76, 175, 120, 0.1);
+      }
+
+      .form-textarea {
+        min-height: 100px;
+        resize: vertical;
+        font-family: var(--font-sans);
+      }
+
+      /* Button Styles */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.625rem 1.125rem;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .btn-primary {
+        background-color: var(--green);
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background-color: #3d9970;
+        box-shadow: 0 4px 6px rgba(76, 175, 120, 0.2);
+      }
+
+      .btn-secondary {
+        background-color: white;
+        color: #374151;
+        border: 1px solid #d1d5db;
+      }
+
+      .btn-secondary:hover {
+        background-color: #f9fafb;
+      }
+
+      @media (max-width: 580px) {
+        .form-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="d-flex min-vh-100">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="sidebar-logo">
+            <img
+              src="/frontend/assets/images/pinevision-logo.svg"
+              alt="PineVision"
+              class="sidebar-logo-img"
+            />
+          </div>
+          <div class="sidebar-brand-text">
+            <div class="sidebar-brand-name">PineVision</div>
+            <div class="sidebar-brand-tagline">Farm Monitoring</div>
+          </div>
+        </div>
+
+        <button
+          class="sidebar-collapse-btn"
+          onclick="app.toggleSidebar()"
+          aria-label="Toggle sidebar"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="15,18 9,12 15,6" />
+          </svg>
+          <span class="nav-link-text">Collapse sidebar</span>
+        </button>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section">
+            <div class="nav-section-title">Main Menu</div>
+            <ul class="nav-links">
+              <li>
+                <a href="dashboard.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-dashboard.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Dashboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="blocks.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-leaf.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Fruit Blocks</span>
+                </a>
+              </li>
+              <li>
+                <a href="scans.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-clipboard.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Scan Log</span>
+                </a>
+              </li>
+              <li>
+                <a href="alerts.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-bell.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Alerts</span>
+                </a>
+              </li>
+              <li>
+                <a href="settings.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-cog.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Settings</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="nav-section">
+            <div class="nav-section-title">Field Operations</div>
+            <ul class="nav-links">
+              <li>
+                <a href="flight.html" class="nav-link active">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/flight.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Flight Missions</span>
+                </a>
+              </li>
+              <li>
+                <a href="reports.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/report.svg"
+                      alt="Flight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Reports</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-user">
+            <div class="sidebar-user-avatar">U</div>
+            <div class="sidebar-user-info">
+              <div class="sidebar-user-name">User</div>
+              <div class="sidebar-user-role">client</div>
+            </div>
+          </div>
+          <button class="btn-logout" onclick="auth.logout()">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span class="logout-text">Logout</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <div class="container-fluid py-4 px-4 page-container">
+          <!-- Page Header -->
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <h1 class="page-title d-flex align-items-center gap-2">
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    style="color: var(--green); flex-shrink: 0"
+                  >
+                    <path d="M22 2L11 13" />
+                    <path d="M22 2L15 22 11 13 2 9l20-7z" /></svg
+                  >Flight Missions
+                </h1>
+                <p class="page-subtitle">
+                  Plan and track drone scanning missions across all farm blocks
+                </p>
+              </div>
+              <button class="btn btn-primary" onclick="openAddMissionModal()">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span>Add Mission</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Filter Bar -->
+          <div class="filter-bar">
+            <span class="filter-label">Status:</span>
+            <button
+              class="filter-btn active"
+              data-value="all"
+              onclick="setFilter('all', this)"
+            >
+              All
+            </button>
+            <button
+              class="filter-btn"
+              data-value="scheduled"
+              onclick="setFilter('scheduled', this)"
+            >
+              Scheduled
+            </button>
+            <button
+              class="filter-btn"
+              data-value="in-progress"
+              onclick="setFilter('in-progress', this)"
+            >
+              In Progress
+            </button>
+            <button
+              class="filter-btn"
+              data-value="completed"
+              onclick="setFilter('completed', this)"
+            >
+              Completed
+            </button>
+            <button
+              class="filter-btn"
+              data-value="cancelled"
+              onclick="setFilter('cancelled', this)"
+            >
+              Cancelled
+            </button>
+          </div>
+
+          <!-- Mission Cards Grid -->
+          <div class="row g-3" id="missions-grid">
+            <!-- Populated by JavaScript -->
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Add Mission Modal -->
+    <div id="add-mission-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Add Flight Mission</h2>
+          <button class="modal-close" onclick="closeAddMissionModal()">
+            &times;
+          </button>
+        </div>
+        <form id="add-mission-form" onsubmit="handleAddMission(event)">
+          <div class="modal-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="mission-date"
+                  >Mission Date *</label
+                >
+                <input
+                  type="date"
+                  id="mission-date"
+                  name="missionDate"
+                  class="form-input"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="mission-time"
+                  >Scheduled Time *</label
+                >
+                <input
+                  type="time"
+                  id="mission-time"
+                  name="missionTime"
+                  class="form-input"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="mission-area"
+                >Area to Cover *</label
+              >
+              <select
+                id="mission-area"
+                name="missionArea"
+                class="form-select"
+                required
+              >
+                <option value="">Select coverage area</option>
+                <option value="All 8 blocks (26.8 ha)">
+                  All 8 blocks (26.8 ha)
+                </option>
+                <option value="North A + North B (6.0 ha)">
+                  North A + North B (6.0 ha)
+                </option>
+                <option value="South A + South B (6.6 ha)">
+                  South A + South B (6.6 ha)
+                </option>
+                <option value="East A + East B (6.5 ha)">
+                  East A + East B (6.5 ha)
+                </option>
+                <option value="West A + West B (6.7 ha)">
+                  West A + West B (6.7 ha)
+                </option>
+                <option value="Custom">Custom</option>
+              </select>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="mission-operator"
+                  >Operator *</label
+                >
+                <select
+                  id="mission-operator"
+                  name="operator"
+                  class="form-select"
+                  required
+                >
+                  <option value="">Select operator</option>
+                  <option value="Juan Dela Cruz">Juan Dela Cruz</option>
+                  <option value="Maria Santos">Maria Santos</option>
+                  <option value="Pedro Reyes">Pedro Reyes</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="mission-drone">Drone *</label>
+                <select
+                  id="mission-drone"
+                  name="drone"
+                  class="form-select"
+                  required
+                >
+                  <option value="DJI Mavic 3 Multispectral">
+                    DJI Mavic 3 Multispectral
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="mission-notes">Notes</label>
+              <textarea
+                id="mission-notes"
+                name="notes"
+                class="form-textarea"
+                placeholder="Optional: special instructions or objectives..."
+              ></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              onclick="closeAddMissionModal()"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">
+              Schedule Mission
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Edit Mission Modal -->
+    <div id="edit-mission-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Edit Flight Mission</h2>
+          <button class="modal-close" onclick="closeEditMissionModal()">
+            &times;
+          </button>
+        </div>
+        <form id="edit-mission-form" onsubmit="handleEditMission(event)">
+          <input type="hidden" id="edit-mission-id" name="missionId" />
+          <div class="modal-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="edit-mission-date"
+                  >Mission Date *</label
+                >
+                <input
+                  type="date"
+                  id="edit-mission-date"
+                  name="missionDate"
+                  class="form-input"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="edit-mission-time"
+                  >Scheduled Time *</label
+                >
+                <input
+                  type="time"
+                  id="edit-mission-time"
+                  name="missionTime"
+                  class="form-input"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="edit-mission-area"
+                >Area to Cover *</label
+              >
+              <select
+                id="edit-mission-area"
+                name="missionArea"
+                class="form-select"
+                required
+              >
+                <option value="All 8 blocks (26.8 ha)">
+                  All 8 blocks (26.8 ha)
+                </option>
+                <option value="North A + North B (6.0 ha)">
+                  North A + North B (6.0 ha)
+                </option>
+                <option value="South A + South B (6.6 ha)">
+                  South A + South B (6.6 ha)
+                </option>
+                <option value="East A + East B (6.5 ha)">
+                  East A + East B (6.5 ha)
+                </option>
+                <option value="West A + West B (6.7 ha)">
+                  West A + West B (6.7 ha)
+                </option>
+                <option value="Custom">Custom</option>
+              </select>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="edit-mission-operator"
+                  >Operator *</label
+                >
+                <select
+                  id="edit-mission-operator"
+                  name="operator"
+                  class="form-select"
+                  required
+                >
+                  <option value="Juan Dela Cruz">Juan Dela Cruz</option>
+                  <option value="Maria Santos">Maria Santos</option>
+                  <option value="Pedro Reyes">Pedro Reyes</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="edit-mission-status"
+                  >Status *</label
+                >
+                <select
+                  id="edit-mission-status"
+                  name="status"
+                  class="form-select"
+                  required
+                >
+                  <option value="scheduled">Scheduled</option>
+                  <option value="in-progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="edit-mission-notes">Notes</label>
+              <textarea
+                id="edit-mission-notes"
+                name="notes"
+                class="form-textarea"
+                placeholder="Optional: special instructions or objectives..."
+              ></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              onclick="closeEditMissionModal()"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+    <!-- Bootstrap JS -->
+    <script src="../../bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Application JavaScript -->
+    <script src="../../js/auth.js"></script>
+    <script src="../../js/utils.js"></script>
+    <script src="../../js/cache.js"></script>
+    <script src="../../js/flight.js"></script>
+  </body>
+</html>

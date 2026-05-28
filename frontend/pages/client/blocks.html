@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        try {
+          var s = JSON.parse(
+            localStorage.getItem("pinevision_settings") || "{}",
+          );
+          if (s.theme === "dark")
+            document.documentElement.classList.add("dark-mode");
+        } catch (e) {}
+      })();
+    </script>
+    <title>Fruit Blocks - PineVision</title>
+
+    <!-- CSS: Bootstrap first, then custom overrides -->
+    <link rel="stylesheet" href="../../bootstrap/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="../../css/tokens.css" />
+    <link rel="stylesheet" href="../../css/layout.css" />
+    <link rel="stylesheet" href="../../css/components.css" />
+
+    <style>
+      /* ── Filter Bar ─────────────────────────────────────── */
+      .filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-lg);
+        align-items: center;
+        padding: var(--space-md) var(--space-lg);
+        background-color: var(--surf);
+        border: var(--border-width-base) solid var(--border);
+        border-radius: var(--radius-lg);
+        margin-bottom: var(--space-lg);
+      }
+
+      .filter-group {
+        display: flex;
+        align-items: center;
+        gap: var(--space-sm);
+        flex-wrap: wrap;
+      }
+
+      .filter-label {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .filter-btn {
+        padding: 4px var(--space-md);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        border: var(--border-width-base) solid var(--border);
+        border-radius: var(--radius-pill);
+        background-color: var(--surf2);
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        font-family: var(--font-sans);
+        line-height: 1.5;
+      }
+
+      .filter-btn:hover {
+        border-color: var(--green);
+        color: var(--green);
+      }
+
+      .filter-btn.active {
+        background-color: var(--green-bg);
+        border-color: var(--green);
+        color: var(--green);
+      }
+
+      .filter-divider {
+        width: 1px;
+        height: 22px;
+        background-color: var(--border);
+        flex-shrink: 0;
+      }
+
+      /* ── Block Card Redesign ────────────────────────────── */
+      .bcard-stage {
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-semibold);
+        color: var(--color-text-primary);
+        margin: var(--space-xs) 0;
+        line-height: 1.25;
+      }
+
+      .bcard-number {
+        font-size: var(--font-size-xs);
+        color: var(--muted);
+        font-weight: var(--font-weight-semibold);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+      }
+
+      .bcard-meta {
+        font-size: var(--font-size-sm);
+        color: var(--muted);
+      }
+
+      /* ── Block Card: bar + foot (current JS template) ──── */
+      .bcard {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .bcard-bar-section {
+        margin-bottom: var(--space-md);
+      }
+
+      .bcard-bar-label {
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-medium);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: var(--space-xs);
+      }
+
+      .bcard-foot {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-xs) var(--space-md);
+        padding-top: var(--space-md);
+        border-top: var(--border-width-thin) solid var(--border);
+        margin-top: auto;
+      }
+
+      .bcard-foot-stat {
+        font-size: var(--font-size-xs);
+        font-family: var(--font-mono);
+        color: var(--muted);
+      }
+
+      /* ── Empty / No-match state ─────────────────────────── */
+      .empty-filter-state {
+        text-align: center;
+        padding: var(--space-4xl) var(--space-xl);
+        color: var(--muted);
+      }
+
+      .empty-filter-icon {
+        margin-bottom: var(--space-lg);
+        opacity: 0.35;
+      }
+
+      .empty-filter-icon svg {
+        width: 40px;
+        height: 40px;
+        display: inline-block;
+      }
+
+      .empty-filter-text {
+        font-size: var(--font-size-base);
+      }
+
+      @media (max-width: 580px) {
+        .modal .form-row {
+          grid-template-columns: 1fr;
+        }
+        .filter-bar {
+          gap: var(--space-md);
+        }
+        .filter-divider {
+          display: none;
+        }
+        .block-detail-header {
+          gap: var(--space-md);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="d-flex min-vh-100">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="sidebar-logo">
+            <img
+              src="/frontend/assets/images/pinevision-logo.svg"
+              alt="PineVision"
+              class="sidebar-logo-img"
+            />
+          </div>
+          <div class="sidebar-brand-text">
+            <div class="sidebar-brand-name">PineVision</div>
+            <div class="sidebar-brand-tagline">Farm Monitoring</div>
+          </div>
+        </div>
+
+        <button
+          class="sidebar-collapse-btn"
+          onclick="app.toggleSidebar()"
+          aria-label="Toggle sidebar"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polyline points="15,18 9,12 15,6" />
+          </svg>
+          <span class="nav-link-text">Collapse sidebar</span>
+        </button>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section">
+            <div class="nav-section-title">Main Menu</div>
+            <ul class="nav-links">
+              <li>
+                <a href="dashboard.html" class="nav-link active">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-dashboard.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Dashboard</span>
+                </a>
+              </li>
+              <li>
+                <a href="blocks.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-leaf.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Fruit Blocks</span>
+                </a>
+              </li>
+              <li>
+                <a href="scans.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-clipboard.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Scan Log</span>
+                </a>
+              </li>
+              <li>
+                <a href="alerts.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-bell.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Alerts</span>
+                </a>
+              </li>
+              <li>
+                <a href="settings.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/nav-cog.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Settings</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div class="nav-section">
+            <div class="nav-section-title">Field Operations</div>
+            <ul class="nav-links">
+              <li>
+                <a href="flight.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/flight.svg"
+                      alt="Fl ight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Flight Missions</span>
+                </a>
+              </li>
+              <li>
+                <a href="reports.html" class="nav-link">
+                  <span class="nav-link-icon">
+                    <img
+                      src="/frontend/assets/icons/report.svg"
+                      alt="Flight Icon"
+                      width="20"
+                    />
+                  </span>
+                  <span class="nav-link-text">Reports</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-user">
+            <div class="sidebar-user-avatar">U</div>
+            <div class="sidebar-user-info">
+              <div class="sidebar-user-name">User</div>
+              <div class="sidebar-user-role">client</div>
+            </div>
+          </div>
+          <button class="btn-logout" onclick="auth.logout()">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span class="logout-text">Logout</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <div class="container-fluid py-4 px-4 page-container">
+          <!-- Page Header -->
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <h1 class="page-title d-flex align-items-center gap-2">
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    style="color: var(--green); flex-shrink: 0"
+                  >
+                    <path
+                      d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"
+                    />
+                    <path
+                      d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"
+                    /></svg
+                  >Fruit Blocks
+                </h1>
+                <p class="page-subtitle">
+                  Monitor individual block performance and fruit condition
+                </p>
+              </div>
+              <button class="btn btn-primary" onclick="openAddBlockModal()">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span>Add New Block</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- BLOCK LIST VIEW -->
+          <div id="blocks-list-view">
+            <!-- Filter Bar -->
+            <div class="filter-bar">
+              <div class="filter-group">
+                <span class="filter-label">Status:</span>
+                <button
+                  class="filter-btn active"
+                  data-filter="status"
+                  data-value="all"
+                  onclick="setFilter('status', 'all', this)"
+                >
+                  All
+                </button>
+                <button
+                  class="filter-btn"
+                  data-filter="status"
+                  data-value="good"
+                  onclick="setFilter('status', 'good', this)"
+                >
+                  Healthy
+                </button>
+                <button
+                  class="filter-btn"
+                  data-filter="status"
+                  data-value="warn"
+                  onclick="setFilter('status', 'warn', this)"
+                >
+                  Watch
+                </button>
+                <button
+                  class="filter-btn"
+                  data-filter="status"
+                  data-value="crit"
+                  onclick="setFilter('status', 'crit', this)"
+                >
+                  Critical
+                </button>
+              </div>
+              <div class="filter-divider"></div>
+              <div class="filter-group">
+                <span class="filter-label">Section:</span>
+                <button
+                  class="filter-btn active"
+                  data-filter="section"
+                  data-value="all"
+                  onclick="setFilter('section', 'all', this)"
+                >
+                  All
+                </button>
+                <button
+                  class="filter-btn"
+                  data-filter="section"
+                  data-value="north"
+                  onclick="setFilter('section', 'north', this)"
+                >
+                  North
+                </button>
+                <button
+                  class="filter-btn"
+                  data-filter="section"
+                  data-value="south"
+                  onclick="setFilter('section', 'south', this)"
+                >
+                  South
+                </button>
+                <button
+                  class="filter-btn"
+                  data-filter="section"
+                  data-value="east"
+                  onclick="setFilter('section', 'east', this)"
+                >
+                  East
+                </button>
+                <button
+                  class="filter-btn"
+                  data-filter="section"
+                  data-value="west"
+                  onclick="setFilter('section', 'west', this)"
+                >
+                  West
+                </button>
+              </div>
+            </div>
+
+            <!-- Blocks Grid -->
+            <div class="row row-cols-1 row-cols-md-2 g-3" id="blocks-grid">
+              <!-- Populated by JavaScript -->
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- ADD BLOCK MODAL -->
+    <div id="add-block-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title">Add New Block</h2>
+          <button class="modal-close" onclick="closeAddBlockModal()">
+            &times;
+          </button>
+        </div>
+        <form id="add-block-form" onsubmit="handleAddBlock(event)">
+          <div class="modal-body">
+            <div class="form-error" id="form-error"></div>
+
+            <div class="form-group">
+              <label class="form-label" for="daf">Growth Stage (DAF) *</label>
+              <input
+                type="number"
+                id="daf"
+                name="daf"
+                class="form-input"
+                placeholder="e.g., 245"
+                min="0"
+                max="999"
+                required
+              />
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="section">Section *</label>
+                <input
+                  type="text"
+                  id="section"
+                  name="section"
+                  class="form-input"
+                  placeholder="e.g., North A"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="area">Area (hectares) *</label>
+                <input
+                  type="number"
+                  id="area"
+                  name="area"
+                  class="form-input"
+                  step="0.1"
+                  placeholder="e.g., 2.5"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="planted">Planting Date *</label>
+                <input
+                  type="date"
+                  id="planted"
+                  name="planted"
+                  class="form-input"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="forcingDate"
+                  >Forcing Date *</label
+                >
+                <input
+                  type="date"
+                  id="forcingDate"
+                  name="forcingDate"
+                  class="form-input"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="declaredPopulation"
+                >Declared Plant Population *</label
+              >
+              <input
+                type="number"
+                id="declaredPopulation"
+                name="declaredPopulation"
+                class="form-input"
+                placeholder="e.g., 12500"
+                required
+              />
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              onclick="closeAddBlockModal()"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">Add Block</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <!-- Bootstrap JS -->
+    <script src="../../bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Application JavaScript -->
+    <script src="../../js/auth.js"></script>
+    <script src="../../js/data.js"></script>
+    <script src="../../js/utils.js"></script>
+    <script src="../../js/app.js"></script>
+
+    <script>
+      if (!auth.requireAuth()) {
+        /* redirects */
+      }
+
+      const activeFilters = { status: "all", section: "all" };
+      let ALL_BLOCKS = [];
+
+      window.initPage = async function () {
+        await loadBlocksFromFirebase();
+        utils.setupModalClose("add-block-modal");
+      };
+
+      // ── Load Blocks from Firebase ────────────────────────────────────
+
+      async function loadBlocksFromFirebase() {
+        try {
+          console.log("📥 Loading blocks from Firestore...");
+
+          const currentUser = auth.getCurrentUser();
+
+          // Fetch blocks for current user
+          const blocksSnapshot = await firebase
+            .firestore()
+            .collection("blocks")
+            .where("userId", "==", currentUser.uid)
+            .get();
+
+          ALL_BLOCKS = [];
+
+          blocksSnapshot.forEach(function (doc) {
+            const blockData = doc.data();
+            ALL_BLOCKS.push({
+              id: doc.id,
+              blockId: blockData.blockId,
+              blockName: blockData.blockName,
+              section: blockData.section,
+              area: blockData.area,
+
+              // Latest scan data
+              stage: blockData.stage || blockData.blockName || "Plant Crop", // ← FIXED
+              bearing: blockData.bearingPercent || 0,
+              nonbearing: blockData.nonBearingPercent || 0,
+              plants: blockData.totalPineapples || 0,
+              nonViable: blockData.nonViable || 0, // ← CHANGED from discolored
+
+              // Metadata
+              lastScanned: blockData.lastScanned,
+              totalScans: blockData.totalScans || 0,
+            });
+          });
+
+          console.log("✅ Loaded", ALL_BLOCKS.length, "blocks from Firestore");
+
+          renderBlocks();
+        } catch (error) {
+          console.error("❌ Error loading blocks:", error);
+          ALL_BLOCKS = [];
+          renderBlocks();
+        }
+      }
+
+      // ── Filtering ────────────────────────────────────────────────────
+
+      function setFilter(type, value, btn) {
+        activeFilters[type] = value;
+        document
+          .querySelectorAll(`.filter-btn[data-filter="${type}"]`)
+          .forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderBlocks();
+      }
+
+      // ── Render Blocks Grid ───────────────────────────────────────────
+
+      function renderBlocks() {
+        let blocks = ALL_BLOCKS;
+
+        // Apply status filter
+        if (activeFilters.status !== "all") {
+          blocks = blocks.filter(function (b) {
+            const statusClass = getStatusClass(b.bearing);
+            return statusClass === activeFilters.status;
+          });
+        }
+
+        // Apply section filter
+        if (activeFilters.section !== "all") {
+          const s = activeFilters.section.toLowerCase();
+          blocks = blocks.filter(function (b) {
+            return b.section.toLowerCase().startsWith(s);
+          });
+        }
+
+        const grid = document.getElementById("blocks-grid");
+
+        if (blocks.length === 0) {
+          grid.innerHTML = `
+                      <div class="col-12">
+                          <div class="empty-filter-state">
+                              <div class="empty-filter-icon">
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                  </svg>
+                              </div>
+                              <div class="empty-filter-text">No blocks match the selected filters.</div>
+                          </div>
+                      </div>`;
+          return;
+        }
+
+        grid.innerHTML = blocks
+          .map(function (block) {
+            const statusClass = getStatusClass(block.bearing);
+            const barColorVal = getBarColor(block.bearing);
+            const nonViableColor =
+              block.nonViable > 10 ? "var(--red)" : "var(--amber)";
+
+            return `
+                      <div class="col">
+                          <div class="bcard h-100" onclick="showBlockDetail('${block.id}')">
+                              <div class="bcard-header">
+                                  <div>
+                                      <div class="bcard-number">${block.blockName || "BLOCK " + block.blockId}</div>
+                                      <div class="bcard-stage">${block.stage}</div>
+                                      <div class="bcard-meta">${block.section} &middot; ${formatArea(block.area)}</div>
+                                  </div>
+                                  ${statusBadge(statusClass)}
+                              </div>
+
+                              <div class="bcard-bar-section">
+                                  <div class="bcard-bar-label">Bearing rate</div>
+                                  ${buildInlineBar(block.bearing, barColorVal)}
+                              </div>
+
+                              <div class="bcard-foot">
+                                  <span class="bcard-foot-stat">${formatNumber(block.plants)} plants</span>
+                                  <span class="bcard-foot-stat" style="color: ${nonViableColor};">${formatPercent(block.nonViable)} non-viable</span>
+                                  <span class="bcard-foot-stat" style="color: var(--amber);">${formatPercent(block.nonbearing)} non-bearing</span>
+                              </div>
+                          </div>
+                      </div>`;
+          })
+          .join("");
+      }
+
+      // ── Helper Functions ─────────────────────────────────────────────
+
+      function getStatusClass(bearing) {
+        if (bearing >= 80) return "good";
+        if (bearing >= 60) return "warn";
+        return "crit";
+      }
+
+      function getBarColor(bearing) {
+        if (bearing >= 80) return "var(--green)";
+        if (bearing >= 60) return "var(--amber)";
+        return "var(--red)";
+      }
+
+      function statusBadge(status) {
+        const labels = { good: "Healthy", warn: "Watch", crit: "Critical" };
+        const colors = { good: "good", warn: "warn", crit: "crit" };
+        return (
+          '<span class="badge ' +
+          colors[status] +
+          '"><span class="bdot"></span>' +
+          labels[status] +
+          "</span>"
+        );
+      }
+
+      function buildInlineBar(percent, color) {
+        return (
+          '<div class="bar-wrap"><div class="bar-fill" style="width:' +
+          percent +
+          "%;background:" +
+          color +
+          ';"></div></div><div class="bar-label">' +
+          percent.toFixed(1) +
+          "%</div>"
+        );
+      }
+
+      function formatNumber(num) {
+        return num.toLocaleString("en-US");
+      }
+
+      function formatPercent(num) {
+        return num.toFixed(1) + "%";
+      }
+
+      function formatArea(area) {
+        return area + " ha";
+      }
+
+      // ── Navigate to block detail page ────────────────────────────────
+
+      function showBlockDetail(id) {
+        window.location.href = "blocks-view.html?id=" + id;
+      }
+
+      // ── Modal helpers ────────────────────────────────────────────────
+
+      function openAddBlockModal() {
+        utils.showModal("add-block-modal");
+      }
+
+      function closeAddBlockModal() {
+        utils.hideModal("add-block-modal");
+        utils.resetForm("add-block-form");
+      }
+
+      async function handleAddBlock(event) {
+        event.preventDefault();
+        const formData = utils.getFormData("add-block-form");
+
+        if (
+          !formData.daf ||
+          !formData.section ||
+          !formData.area ||
+          !formData.planted ||
+          !formData.forcingDate ||
+          !formData.declaredPopulation
+        ) {
+          utils.showFormError(
+            "add-block-form",
+            "Please fill in all required fields",
+          );
+          return;
+        }
+
+        try {
+          const currentUser = auth.getCurrentUser();
+
+          // Create new block in Firestore
+          await firebase
+            .firestore()
+            .collection("blocks")
+            .add({
+              blockId: "block_" + Date.now(),
+              blockName: formData.section,
+              userId: currentUser.uid,
+              section: formData.section,
+              area: parseFloat(formData.area),
+
+              // Initial values - use parseFloat to force double type
+              stage: formData.daf + " DAF",
+              daf: parseInt(formData.daf),
+              bearingPercent: 0.01,
+              nonBearingPercent: 0.01,
+              totalPineapples: parseInt(formData.declaredPopulation),
+              nonViable: 0.01,
+
+              // Metadata
+              planted: formData.planted,
+              forcingDate: formData.forcingDate,
+              declaredPopulation: parseInt(formData.declaredPopulation),
+              totalScans: 0,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+
+          utils.showToast("Block added successfully!", "success");
+          closeAddBlockModal();
+          await loadBlocksFromFirebase();
+        } catch (error) {
+          console.error("Error adding block:", error);
+          utils.showFormError(
+            "add-block-form",
+            "Failed to add block: " + error.message,
+          );
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,30 @@
+flask==2.3.0
+flask-cors==4.0.0
+firebase-admin==6.2.0
+opencv-python
+numpy
+
+# Core ML/CV
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Object Tracking
+deep-sort-realtime>=1.3.2
+
+# Firebase
+firebase-admin>=6.2.0
+
+# Video Processing
+av>=10.0.0
+ffmpeg-python>=0.2.0
+
+# Existing dependencies
+flask>=2.3.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Utilities
+pillow>=10.0.0
