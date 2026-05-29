@@ -50,6 +50,14 @@
                     data-bs-target="#modal-connect">
                 <i class="ti ti-wifi me-1" aria-hidden="true"></i> Connect Drone
             </button>
+            <button id="btn-upload-video"
+                    class="btn dv-btn-upload"
+                    aria-label="Upload MP4 video for scan analysis">
+                <i class="ti ti-upload me-1" aria-hidden="true"></i> Upload MP4
+            </button>
+            <input type="file" id="input-video-file"
+                   accept=".mp4,video/mp4" class="d-none"
+                   aria-hidden="true">
             <button id="btn-end-scan"
                     class="btn dv-btn-end-scan d-none"
                     data-bs-toggle="modal"
@@ -195,6 +203,18 @@
                 </div>
 
                 <div class="modal-body dv-modal-body">
+
+                    <!-- Auto-prepare status (MediaMTX startup + IP detection) -->
+                    <div id="dv-prepare-status" class="d-none mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="spinner-border spinner-border-sm dv-prepare-spinner"
+                                  role="status" aria-hidden="true"></span>
+                            <span id="dv-prepare-label" class="dv-prepare-label small">
+                                Starting MediaMTX server...
+                            </span>
+                        </div>
+                    </div>
+
                     <div class="mb-3">
                         <label for="input-rtmp-url" class="dv-input-label">
                             RTMP Stream URL
@@ -208,6 +228,15 @@
                         <div class="dv-input-hint mt-1">
                             Enter the RTMP push URL from your drone controller app.
                         </div>
+                    </div>
+
+                    <!-- Multi-IP warning: shown when the machine has more than one
+                         network interface (e.g. WiFi + USB tethering for DJI controller) -->
+                    <div id="dv-ip-warning" class="d-none alert alert-warning py-2 px-3 small mb-3">
+                        <strong><i class="ti ti-alert-triangle me-1"></i>Multiple network interfaces detected.</strong>
+                        The pre-filled IP may not be reachable from your DJI controller.
+                        Try each address below if DJI&nbsp;Fly shows a livestreaming error:
+                        <ul id="dv-ip-list" class="mb-0 mt-1 ps-3"></ul>
                     </div>
 
                     <!-- Connection error banner -->
@@ -300,6 +329,73 @@
                         <span id="btn-end-spinner"
                               class="spinner-border spinner-border-sm ms-2 d-none"
                               role="status" aria-hidden="true"></span>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Scan Finished Modal (video upload mode) ───────────── -->
+    <div class="modal fade" id="modal-scan-finished" tabindex="-1"
+         aria-labelledby="modal-sf-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content dv-modal-content">
+
+                <div class="modal-header dv-modal-header">
+                    <h5 class="modal-title" id="modal-sf-title">
+                        <i class="ti ti-circle-check me-2" aria-hidden="true"></i>Scan Finished
+                    </h5>
+                </div>
+
+                <div class="modal-body dv-modal-body">
+
+                    <div class="dv-scan-summary mb-3">
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <div class="dv-summary-item">
+                                    <span class="dv-summary-label">Duration</span>
+                                    <span class="dv-summary-val" id="sf-duration">—</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="dv-summary-item">
+                                    <span class="dv-summary-label">Total Detected</span>
+                                    <span class="dv-summary-val" id="sf-total">—</span>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="dv-summary-item green">
+                                    <span class="dv-summary-label">Bearing</span>
+                                    <span class="dv-summary-val" id="sf-bearing">—</span>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="dv-summary-item amber">
+                                    <span class="dv-summary-label">Non-Bearing</span>
+                                    <span class="dv-summary-val" id="sf-non-bearing">—</span>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="dv-summary-item yellow">
+                                    <span class="dv-summary-label">Non-Viable</span>
+                                    <span class="dv-summary-val" id="sf-discolored">—</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p class="dv-confirm-text">
+                        Video scan complete. Results are being saved to this block's session log.
+                        Final counts will appear in the block details page.
+                    </p>
+
+                </div>
+
+                <div class="modal-footer dv-modal-footer">
+                    <button type="button" id="btn-scan-finished-ok"
+                            class="btn dv-btn-primary">
+                        <i class="ti ti-check me-1" aria-hidden="true"></i> OK
                     </button>
                 </div>
 

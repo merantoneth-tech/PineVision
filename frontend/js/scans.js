@@ -25,7 +25,7 @@
         const currentUser = auth.getCurrentUser();
         if (!currentUser) {
             console.warn('⚠️ No user logged in');
-            window.location.href = '../auth/login.html';
+            window.location.href = '/index.html';
             return;
         }
 

@@ -23,20 +23,25 @@ const HLS_CONFIG = {
 // ── State ─────────────────────────────────────────────────────
 
 const DRONE_STATE = {
-    status:            'idle',   // idle|connecting|active|reconnecting|failed|ending
-    streamUrl:         null,
-    rtmpUrl:           null,
-    streamPath:        null,
-    blockId:           null,     // NEW: Block ID from URL
-    userId:            null,     // NEW: Current user ID
-    scanId:            null,     // NEW: Active scan session ID
-    scanStartTime:     null,
-    timerInterval:     null,
-    statsInterval:     null,     // REMOVED: No more mock stats
-    pollInterval:      null,
-    reconnectAttempts: 0,
-    hls:               null,
-    firebaseListener:  null,     // NEW: Firebase listener
+    status:               'idle',   // idle|connecting|active|reconnecting|failed|ending
+    streamUrl:            null,
+    rtmpUrl:              null,
+    streamPath:           null,
+    blockId:              null,
+    userId:               null,
+    scanId:               null,
+    scanStartTime:        null,
+    timerInterval:        null,
+    statsInterval:        null,
+    pollInterval:         null,
+    reconnectAttempts:    0,
+    hls:                  null,
+    firebaseListener:     null,
+    scanFirebaseListener: null,  // listener for scans/{scanId} completion signal
+    videoMode:            false,  // true when playing an uploaded MP4 (not live HLS)
+    videoBlobUrl:         null,   // object URL for the uploaded file
+    videoEnded:           false,  // true when browser video element has finished playing
+    backendCompleted:     false,  // true when backend scan loop signals 'completed' via Firestore
     stats: { total: 0, bearing: 0, nonBearing: 0, discolored: 0, progress: 0 },
 };
 
@@ -71,7 +76,7 @@ function renderUI() {
     document.querySelector('.dv-placeholder-hint').textContent =
         s === 'failed'
             ? 'Stream could not be established. Check setup and try again.'
-            : 'Click "Connect Drone" to begin a scan session';
+            : 'Click "Connect Drone" or "Upload MP4" to begin a scan session';
 
     // Connecting overlay label changes for reconnect
     const connLabel = document.querySelector('.dv-connecting-label');
@@ -79,6 +84,7 @@ function renderUI() {
 
     // Topbar buttons
     toggleEl('btn-connect',        isInactive);
+    toggleEl('btn-upload-video',   isInactive);
     toggleEl('btn-end-scan',       isSession);
     toggleEl('btn-end-scan-stats', isSession);
 
@@ -102,6 +108,16 @@ function transitionTo(newStatus) {
 
 // ── Backend API ───────────────────────────────────────────────
 
+async function apiPrepare() {
+    const resp = await fetch(`${API_BASE}/api/drone/prepare`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal:  AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok && resp.status !== 500) throw new Error(`Server ${resp.status}`);
+    return resp.json();
+}
+
 async function apiConnect(rtmpUrl) {
     const resp = await fetch(`${API_BASE}/api/drone/connect`, {
         method:  'POST',
@@ -122,7 +138,7 @@ async function apiStatus(path) {
 }
 
 // NEW: Start detection API
-async function apiStartDetection(hlsUrl, blockId, userId) {
+async function apiStartDetection(hlsUrl, blockId, userId, fps = 2) {
     const resp = await fetch(`${API_BASE}/api/drone/start-detection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -130,7 +146,7 @@ async function apiStartDetection(hlsUrl, blockId, userId) {
             hls_url: hlsUrl,
             block_id: blockId,
             user_id: userId,
-            fps: 1
+            fps,
         }),
         signal: AbortSignal.timeout(10_000)
     });
@@ -152,6 +168,71 @@ async function apiStopDetection(blockId, scanId, userId) {
     return resp.json();
 }
 
+// ── Auto-Prepare (MediaMTX startup + IPv4 detection) ─────────
+
+function showPrepareStatus(message) {
+    document.getElementById('dv-prepare-status')?.classList.remove('d-none');
+    const label = document.getElementById('dv-prepare-label');
+    if (label) label.textContent = message;
+}
+
+function hidePrepareStatus() {
+    document.getElementById('dv-prepare-status')?.classList.add('d-none');
+}
+
+async function autoPrepareModal() {
+    const inputEl   = document.getElementById('input-rtmp-url');
+    const submitBtn = document.getElementById('btn-connect-submit');
+
+    if (inputEl)   inputEl.disabled   = true;
+    if (submitBtn) submitBtn.disabled = true;
+    hideConnectError();
+
+    showPrepareStatus('Starting MediaMTX server...');
+
+    let result;
+    try {
+        result = await apiPrepare();
+    } catch {
+        hidePrepareStatus();
+        showConnectError('Backend unreachable. Ensure Flask server is running on port 5000.');
+        if (inputEl)   inputEl.disabled   = false;
+        if (submitBtn) submitBtn.disabled  = false;
+        return;
+    }
+
+    hidePrepareStatus();
+
+    if (result.ok) {
+        if (inputEl) {
+            inputEl.value    = result.rtmp_url;
+            inputEl.disabled = false;
+        }
+        if (submitBtn) submitBtn.disabled = false;
+        clearInputError('input-rtmp-url');
+
+        // Warn user if multiple network interfaces detected — the pre-filled IP
+        // might be the WiFi adapter while the DJI controller is on USB/hotspot.
+        const allIps = result.all_ips || [];
+        if (allIps.length > 1) {
+            const warning = document.getElementById('dv-ip-warning');
+            const list    = document.getElementById('dv-ip-list');
+            if (warning && list) {
+                list.innerHTML = allIps.map(ip =>
+                    `<li><code>rtmp://${ip}:1935/pinevision_scan</code></li>`
+                ).join('');
+                warning.classList.remove('d-none');
+            }
+        } else {
+            document.getElementById('dv-ip-warning')?.classList.add('d-none');
+        }
+    } else {
+        showConnectError(result.message ?? 'Failed to prepare drone connection.');
+        if (inputEl)   inputEl.disabled   = false;
+        if (submitBtn) submitBtn.disabled  = false;
+    }
+}
+
 // ── Connection Workflow ───────────────────────────────────────
 
 async function handleConnect() {
@@ -168,6 +249,7 @@ async function handleConnect() {
     setConnectButtonLoading(true);
     lockConnectModal(true);
     transitionTo('connecting');
+    setConnectingLabel('Connecting drone stream...');
 
     let result;
     try {
@@ -287,9 +369,11 @@ function handleConnectFailed(message) {
 
 async function startDetection() {
     if (!DRONE_STATE.streamUrl || !DRONE_STATE.blockId || !DRONE_STATE.userId) {
-        console.error('❌ Missing required data for detection');
+        utils.showToast('Cannot start detection: missing block or user context. Return to Blocks and try again.', 'error');
         return;
     }
+
+    setConnectingLabel('Initializing live YOLOv8 detection...');
 
     try {
         console.log('🎯 Starting detection...');
@@ -297,7 +381,8 @@ async function startDetection() {
         const result = await apiStartDetection(
             DRONE_STATE.streamUrl,
             DRONE_STATE.blockId,
-            DRONE_STATE.userId
+            DRONE_STATE.userId,
+            2   // fps — 2 frames/sec balances coverage vs. CPU load
         );
 
         if (result.ok) {
@@ -345,6 +430,197 @@ async function stopDetection() {
     }
 }
 
+// ── Video Upload Mode ─────────────────────────────────────────
+
+async function apiUploadVideo(formData) {
+    const resp = await fetch(`${API_BASE}/api/drone/upload-video`, {
+        method: 'POST',
+        body:   formData,
+        // No Content-Type header — browser sets multipart boundary automatically
+        signal: AbortSignal.timeout(120_000),  // large file may take time
+    });
+    return resp.json();
+}
+
+function handleVideoUploadClick() {
+    if (DRONE_STATE.status !== 'idle' && DRONE_STATE.status !== 'failed') return;
+    document.getElementById('input-video-file').click();
+}
+
+async function handleFileSelect(event) {
+    const file = event.target.files[0];
+    event.target.value = '';   // allow re-selecting the same file later
+
+    if (!file) return;
+
+    if (!file.type.includes('mp4') && !file.name.toLowerCase().endsWith('.mp4')) {
+        utils.showToast('Only MP4 files are supported', 'error');
+        return;
+    }
+
+    if (!DRONE_STATE.blockId || !DRONE_STATE.userId) {
+        utils.showToast('Missing block context. Return to Blocks and try again.', 'error');
+        return;
+    }
+
+    // Revoke any leftover blob URL from a previous upload
+    if (DRONE_STATE.videoBlobUrl) {
+        URL.revokeObjectURL(DRONE_STATE.videoBlobUrl);
+        DRONE_STATE.videoBlobUrl = null;
+    }
+
+    // Load video locally so playback starts as soon as upload completes
+    DRONE_STATE.videoBlobUrl = URL.createObjectURL(file);
+    const videoEl = document.getElementById('drone-feed');
+    videoEl.src   = DRONE_STATE.videoBlobUrl;
+    videoEl.load();
+
+    // Show upload-in-progress state
+    DRONE_STATE.videoMode = true;
+    transitionTo('connecting');
+    setConnectingLabel('Uploading video and starting analysis...');
+
+    // POST file to backend
+    const formData = new FormData();
+    formData.append('file',       file);
+    formData.append('block_id',   DRONE_STATE.blockId);
+    formData.append('user_id',    DRONE_STATE.userId);
+    formData.append('frame_skip', '24');   // process every 5th frame (frames 5, 10, 15, ...)
+
+    let result;
+    try {
+        result = await apiUploadVideo(formData);
+    } catch (err) {
+        console.error('Video upload error:', err);
+        handleVideoFailed('Cannot reach backend. Ensure Flask server is running on port 5000.');
+        return;
+    }
+
+    if (!result.ok) {
+        handleVideoFailed(result.message ?? 'Upload failed.');
+        return;
+    }
+
+    // Upload successful — activate video scan session
+    DRONE_STATE.scanId           = result.scan_id;
+    DRONE_STATE.scanStartTime    = new Date();
+    DRONE_STATE.videoEnded       = false;
+    DRONE_STATE.backendCompleted = false;
+
+    startFirebaseListener();
+    startScanCompletionListener();
+    startScanTimer();
+
+    // Start playback
+    videoEl.play().catch(() => {});
+    videoEl.addEventListener('timeupdate', updateVideoProgress);
+    videoEl.addEventListener('ended', handleVideoEnd, { once: true });
+
+    transitionTo('active');
+    document.getElementById('dv-stream-quality').textContent = 'MP4';
+    document.querySelector('.dv-live-badge').innerHTML =
+        '<span class="dv-live-dot" aria-hidden="true"></span> MP4';
+    utils.showToast('Video scan started', 'success');
+}
+
+function handleVideoFailed(message) {
+    DRONE_STATE.videoMode = false;
+
+    const videoEl = document.getElementById('drone-feed');
+    videoEl.removeEventListener('timeupdate', updateVideoProgress);
+    videoEl.pause();
+    videoEl.removeAttribute('src');
+    videoEl.load();
+
+    if (DRONE_STATE.videoBlobUrl) {
+        URL.revokeObjectURL(DRONE_STATE.videoBlobUrl);
+        DRONE_STATE.videoBlobUrl = null;
+    }
+
+    transitionTo('failed');
+    document.querySelector('.dv-placeholder-hint').textContent = message;
+    utils.showToast(message, 'error');
+}
+
+function updateVideoProgress() {
+    const videoEl = document.getElementById('drone-feed');
+    if (!DRONE_STATE.videoMode || !videoEl.duration) return;
+    const pct = (videoEl.currentTime / videoEl.duration) * 100;
+
+    DRONE_STATE.stats.progress = pct;
+    const fill = document.getElementById('stat-progress-fill');
+    if (fill) { fill.style.width = pct + '%'; fill.setAttribute('aria-valuenow', pct); }
+    const pctEl = document.getElementById('stat-progress-pct');
+    if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+}
+
+function handleVideoEnd() {
+    if (DRONE_STATE.status !== 'active' || !DRONE_STATE.videoMode) return;
+
+    const videoEl = document.getElementById('drone-feed');
+    videoEl.removeEventListener('timeupdate', updateVideoProgress);
+
+    // Lock progress at 100% and stop the elapsed-time timer
+    DRONE_STATE.stats.progress = 100;
+    updateStatDisplay();
+    stopScanIntervals();
+
+    DRONE_STATE.videoEnded = true;
+
+    if (!DRONE_STATE.backendCompleted) {
+        // Backend is still processing frames — notify user and wait for completion signal
+        utils.showToast('Video complete — waiting for analysis to finish...', 'info');
+    }
+
+    checkVideoScanComplete();
+}
+
+function showScanFinishedModal() {
+    document.getElementById('sf-duration').textContent    = document.getElementById('dv-timer').textContent;
+    document.getElementById('sf-total').textContent       = DRONE_STATE.stats.total.toLocaleString();
+    document.getElementById('sf-bearing').textContent     = DRONE_STATE.stats.bearing.toFixed(1) + '%';
+    document.getElementById('sf-non-bearing').textContent = DRONE_STATE.stats.nonBearing.toFixed(1) + '%';
+    document.getElementById('sf-discolored').textContent  = DRONE_STATE.stats.discolored.toFixed(1) + '%';
+
+    const modal = new bootstrap.Modal(document.getElementById('modal-scan-finished'));
+    modal.show();
+}
+
+function handleScanFinished() {
+    closeBsModal('modal-scan-finished');
+
+    // Data is already persisted: backend called complete_scan_session before
+    // signalling 'completed', which wrote final counts to both the scan doc and
+    // the block doc in a single atomic batch. No additional save call needed.
+    stopFirebaseListener();
+
+    const videoEl = document.getElementById('drone-feed');
+    videoEl.removeEventListener('timeupdate', updateVideoProgress);
+    videoEl.pause();
+    videoEl.removeAttribute('src');
+    videoEl.load();
+
+    if (DRONE_STATE.videoBlobUrl) {
+        URL.revokeObjectURL(DRONE_STATE.videoBlobUrl);
+        DRONE_STATE.videoBlobUrl = null;
+    }
+
+    DRONE_STATE.videoMode        = false;
+    DRONE_STATE.videoEnded       = false;
+    DRONE_STATE.backendCompleted = false;
+    DRONE_STATE.scanId           = null;
+    DRONE_STATE.scanStartTime    = null;
+    DRONE_STATE.stats            = { total: 0, bearing: 0, nonBearing: 0, discolored: 0, progress: 0 };
+
+    transitionTo('idle');
+
+    if (DRONE_STATE.blockId) {
+        setTimeout(() => {
+            window.location.href = 'blocks-view.html?id=' + DRONE_STATE.blockId;
+        }, 600);
+    }
+}
+
 // ── NEW: Firebase Real-time Listener ──────────────────────────
 
 function startFirebaseListener() {
@@ -361,9 +637,7 @@ function startFirebaseListener() {
         .doc(DRONE_STATE.blockId)
         .onSnapshot((doc) => {
             if (doc.exists) {
-                const data = doc.data();
-                console.log('📊 Firebase update received:', data);
-                updateStatsFromFirebase(data);
+                updateStatsFromFirebase(doc.data());
             }
         }, (error) => {
             console.error('❌ Firebase listener error:', error);
@@ -376,18 +650,59 @@ function stopFirebaseListener() {
         DRONE_STATE.firebaseListener();
         DRONE_STATE.firebaseListener = null;
     }
+    if (DRONE_STATE.scanFirebaseListener) {
+        DRONE_STATE.scanFirebaseListener();
+        DRONE_STATE.scanFirebaseListener = null;
+    }
+}
+
+function startScanCompletionListener() {
+    if (!DRONE_STATE.scanId || typeof firebase === 'undefined') return;
+
+    console.log('🔥 Watching scan completion for:', DRONE_STATE.scanId);
+
+    DRONE_STATE.scanFirebaseListener = firebase.firestore()
+        .collection('scans')
+        .doc(DRONE_STATE.scanId)
+        .onSnapshot((doc) => {
+            if (!doc.exists) return;
+            const data = doc.data();
+            if (data.status !== 'completed') return;
+
+            // Overwrite stats with the authoritative final values from the scan doc
+            const total = data.total || 0;
+            DRONE_STATE.stats.total      = total;
+            DRONE_STATE.stats.bearing    = data.bearingPercent    || 0;
+            DRONE_STATE.stats.nonBearing = data.nonBearingPercent || 0;
+            DRONE_STATE.stats.discolored = data.nonViablePercent  || 0;
+            if (!DRONE_STATE.videoEnded) updateStatDisplay();
+
+            DRONE_STATE.backendCompleted = true;
+            checkVideoScanComplete();
+        }, (error) => {
+            console.error('❌ Scan completion listener error:', error);
+        });
+}
+
+function checkVideoScanComplete() {
+    if (DRONE_STATE.status !== 'active' || !DRONE_STATE.videoMode) return;
+    if (!DRONE_STATE.videoEnded || !DRONE_STATE.backendCompleted) return;
+
+    // Both the browser video and the backend frame processing are done
+    showScanFinishedModal();
 }
 
 function updateStatsFromFirebase(data) {
-    // Update stats from Firebase data
-    DRONE_STATE.stats.bearing = data.bearingPercent || 0;
+    DRONE_STATE.stats.bearing    = data.bearingPercent    || 0;
     DRONE_STATE.stats.nonBearing = data.nonBearingPercent || 0;
-    DRONE_STATE.stats.discolored = data.nonViable || 0;
-    DRONE_STATE.stats.total = data.totalPineapples || 0;
-    
-    // Calculate progress based on bearing rate
-    DRONE_STATE.stats.progress = Math.round(data.bearingPercent || 0);
-    
+    DRONE_STATE.stats.discolored = data.nonViable         || 0;
+    DRONE_STATE.stats.total      = data.totalPineapples   || 0;
+
+    // In video mode the progress bar shows playback position, not bearing rate
+    if (!DRONE_STATE.videoMode) {
+        DRONE_STATE.stats.progress = Math.round(data.bearingPercent || 0);
+    }
+
     updateStatDisplay();
 }
 
@@ -421,7 +736,7 @@ function stopStatusPolling() {
     DRONE_STATE.pollInterval = null;
 }
 
-function handleStreamLost() {
+async function handleStreamLost() {
     const s = DRONE_STATE.status;
 
     if (s === 'reconnecting') {
@@ -429,7 +744,7 @@ function handleStreamLost() {
         if (DRONE_STATE.reconnectAttempts >= MAX_RECONNECT) {
             stopScanIntervals();
             stopStatusPolling();
-            stopDetection();
+            await stopDetection();
             destroyHls();
             transitionTo('failed');
             utils.showToast('Stream lost. Scan ended automatically.', 'error');
@@ -458,12 +773,26 @@ async function handleEndScan() {
     setEndScanButtonLoading(true);
     transitionTo('ending');
 
-    // Stop detection on backend
+    if (DRONE_STATE.videoMode) {
+        // Prevent handleVideoEnd from firing the scan-finished modal
+        document.getElementById('drone-feed').removeEventListener('ended', handleVideoEnd);
+    }
+
     await stopDetection();
 
-    destroyHls();
+    if (DRONE_STATE.videoMode) {
+        if (DRONE_STATE.videoBlobUrl) {
+            URL.revokeObjectURL(DRONE_STATE.videoBlobUrl);
+            DRONE_STATE.videoBlobUrl = null;
+        }
+        DRONE_STATE.videoMode = false;
+    } else {
+        destroyHls();
+        stopStatusPolling();
+    }
+
     stopScanIntervals();
-    stopStatusPolling();
+    stopFirebaseListener();
 
     const videoEl = document.getElementById('drone-feed');
     videoEl.pause();
@@ -477,13 +806,14 @@ async function handleEndScan() {
     DRONE_STATE.streamPath        = null;
     DRONE_STATE.reconnectAttempts = 0;
     DRONE_STATE.scanId            = null;
+    DRONE_STATE.videoEnded        = false;
+    DRONE_STATE.backendCompleted  = false;
 
     setEndScanButtonLoading(false);
     closeBsModal('modal-end-scan');
     transitionTo('idle');
     utils.showToast('Scan session ended', 'info');
-    
-    // Redirect to block details
+
     if (DRONE_STATE.blockId) {
         setTimeout(() => {
             window.location.href = 'blocks-view.html?id=' + DRONE_STATE.blockId;
@@ -535,6 +865,13 @@ function setupFullscreen() {
         icon.className = fs ? 'ti ti-minimize' : 'ti ti-maximize';
         btn.setAttribute('aria-label', fs ? 'Exit fullscreen' : 'Toggle fullscreen');
     });
+}
+
+// ── Connecting Overlay Label ──────────────────────────────────
+
+function setConnectingLabel(text) {
+    const el = document.querySelector('.dv-connecting-label');
+    if (el) el.textContent = text;
 }
 
 // ── Display Helpers ───────────────────────────────────────────
@@ -649,7 +986,10 @@ function setupModalEvents() {
     connectModalEl.addEventListener('show.bs.modal', () => {
         clearInputError('input-rtmp-url');
         hideConnectError();
+        hidePrepareStatus();
+        document.getElementById('dv-ip-warning')?.classList.add('d-none');
         setConnectButtonLoading(false);
+        autoPrepareModal();
     });
     document.getElementById('btn-connect-submit')
         .addEventListener('click', handleConnect);
@@ -666,6 +1006,9 @@ function setupModalEvents() {
     });
     document.getElementById('btn-confirm-end-scan')
         .addEventListener('click', handleEndScan);
+
+    document.getElementById('btn-scan-finished-ok')
+        .addEventListener('click', handleScanFinished);
 }
 
 // ── Back Navigation ───────────────────────────────────────────
@@ -705,7 +1048,13 @@ function initPage() {
     setupBackNavigation();
     setupModalEvents();
     setupFullscreen();
+
+    // Video upload button wiring
+    document.getElementById('btn-upload-video')
+        .addEventListener('click', handleVideoUploadClick);
+    document.getElementById('input-video-file')
+        .addEventListener('change', handleFileSelect);
+
     renderUI();
 }
 
-document.addEventListener('DOMContentLoaded', initPage);

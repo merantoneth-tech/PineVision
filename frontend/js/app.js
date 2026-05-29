@@ -142,7 +142,7 @@ const app = (function() {
                     e.preventDefault();
                     mainContent.classList.add('page-exit');
                     setTimeout(() => {
-                        window.location.href = href;
+                        window.location.href = link.getAttribute('href');
                     }, 200);
                 });
             }

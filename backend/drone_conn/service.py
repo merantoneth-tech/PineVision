@@ -14,10 +14,14 @@ def _parse_rtmp(url: str) -> dict | None:
     m = _RTMP_RE.match(url.strip())
     if not m:
         return None
+    # Keep the full path so MediaMTX path lookup matches what DJI Fly actually
+    # publishes. Using only split('/')[-1] would break two-segment paths like
+    # rtmp://HOST/live/pinevision_scan → MediaMTX path = "live/pinevision_scan",
+    # but we'd query for just "pinevision_scan" and get path_not_found.
     return {
         'host':        m.group(1),
         'port':        int(m.group(2)) if m.group(2) else 1935,
-        'stream_path': m.group(3).rstrip('/').split('/')[-1],
+        'stream_path': m.group(3).rstrip('/'),
     }
 
 

@@ -142,6 +142,21 @@ body {
     background: var(--green-bg);
 }
 
+.dv-btn-upload {
+    font-size: var(--font-size-sm);
+    background: transparent;
+    border: 0.5px solid var(--color-border-secondary);
+    color: var(--color-text-primary);
+    border-radius: 8px;
+    padding: 6px 14px;
+    transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+.dv-btn-upload:hover {
+    border-color: #3b82f6;
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.07);
+}
+
 .dv-btn-end-scan {
     font-size: var(--font-size-sm);
     background: transparent;
@@ -362,7 +377,8 @@ body {
    dialog, blocking all clicks. Restoring Bootstrap's default (1055) and
    clearing the duplicate background fixes the stacking order. */
 #modal-connect,
-#modal-end-scan {
+#modal-end-scan,
+#modal-scan-finished {
     z-index: 1055;
     background-color: transparent;
 }
@@ -539,6 +555,18 @@ body {
     font-size: var(--font-size-sm);
     color: var(--muted);
     margin: 0;
+}
+
+
+/* ── Prepare-status strip (auto-shown inside Connect modal) ─── */
+
+.dv-prepare-spinner {
+    color: #22c55e;
+    flex-shrink: 0;
+}
+.dv-prepare-label {
+    color: var(--muted);
+    font-size: var(--font-size-xs);
 }
 
 

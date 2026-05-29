@@ -168,8 +168,12 @@ def complete_scan_session(
 
         block_ref = db.collection('blocks').document(block_id)
         batch.update(block_ref, {
-            'totalScans':  firestore.Increment(1),
-            'lastScanned': firestore.SERVER_TIMESTAMP,
+            'totalScans':        firestore.Increment(1),
+            'lastScanned':       firestore.SERVER_TIMESTAMP,
+            'bearingPercent':    round(bearing_pct, 1),
+            'nonBearingPercent': round(non_bearing_pct, 1),
+            'nonViable':         round(non_viable_pct, 1),
+            'totalPineapples':   total_count,
         })
 
         batch.commit()

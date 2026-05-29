@@ -3,11 +3,59 @@ Flask Blueprint: /api/drone/*
 Exposes the drone stream connection and health-check endpoints.
 """
 
+import logging
+import os
+import tempfile
+
 from flask import Blueprint, request, jsonify
+from werkzeug.utils import secure_filename
 from . import service
 from .detection import get_detector
 
+log = logging.getLogger(__name__)
+
 drone_bp = Blueprint('drone', __name__, url_prefix='/api/drone')
+
+
+@drone_bp.route('/prepare', methods=['POST'])
+def prepare():
+    """
+    POST /api/drone/prepare
+
+    Called when the user opens the Connect Drone modal.
+    1. Auto-starts MediaMTX if not already running.
+    2. Detects the machine's local IPv4 address.
+    3. Returns the RTMP URL to pre-fill in the frontend.
+    """
+    from . import process_manager, network
+
+    # Step 1 — ensure MediaMTX is up
+    log.info('Prepare: ensuring MediaMTX is running...')
+    mtx = process_manager.ensure_running()
+    if not mtx['ok']:
+        log.error('Prepare: MediaMTX failed — %s', mtx['message'])
+        return jsonify({
+            'ok':      False,
+            'error':   mtx['error'],
+            'message': mtx['message'],
+        }), 500
+
+    # Step 2 — detect local IPv4s (all interfaces so user can pick the right one)
+    log.info('Prepare: detecting local IPv4s...')
+    all_ips = network.get_all_local_ipv4s()
+    ip      = all_ips[0]   # primary / best-guess
+
+    # Step 3 — build RTMP URL
+    rtmp_url = f'rtmp://{ip}:1935/pinevision_scan'
+    log.info('Prepare: RTMP URL = %s | all IPs = %s', rtmp_url, all_ips)
+
+    return jsonify({
+        'ok':               True,
+        'rtmp_url':         rtmp_url,
+        'ip':               ip,
+        'all_ips':          all_ips,
+        'mediamtx_started': mtx.get('started', False),
+    }), 200
 
 
 @drone_bp.route('/connect', methods=['POST'])
@@ -19,17 +67,26 @@ def connect():
     Validates the RTMP URL, queries MediaMTX to confirm the drone is live,
     and returns the HLS playback URL on success.
     """
-    body    = request.get_json(silent=True) or {}
+    body     = request.get_json(silent=True) or {}
     rtmp_url = (body.get('rtmp_url') or '').strip()
 
     if not rtmp_url:
+        log.warning('connect: missing rtmp_url — body=%r', body)
         return jsonify({
             'ok':      False,
             'error':   'missing_url',
             'message': 'rtmp_url is required in the request body.',
         }), 400
 
+    log.info('connect: rtmp_url=%s', rtmp_url)
     result = service.connect(rtmp_url)
+
+    if result['ok']:
+        log.info('connect: success — hls_url=%s', result.get('hls_url'))
+    else:
+        log.warning('connect: failed — error=%s | %s',
+                    result.get('error'), result.get('message'))
+
     return jsonify(result), 200 if result['ok'] else 400
 
 
@@ -165,3 +222,58 @@ def stop_detection():
             'error': 'stop_failed',
             'message': 'Failed to stop detection'
         }), 500
+
+
+@drone_bp.route('/upload-video', methods=['POST'])
+def upload_video():
+    """
+    POST /api/drone/upload-video
+    Multipart form: file (MP4), block_id, user_id, frame_skip (optional, default 2)
+
+    Saves the video to a temp directory, starts an async background scan,
+    and returns {ok, scan_id} immediately so the frontend can play the
+    video locally while the backend processes frames.
+    """
+    if 'file' not in request.files:
+        return jsonify({'ok': False, 'message': 'No file provided'}), 400
+
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({'ok': False, 'message': 'Empty filename'}), 400
+
+    if not f.filename.lower().endswith('.mp4'):
+        return jsonify({'ok': False, 'message': 'Only MP4 files are accepted'}), 400
+
+    block_id = (request.form.get('block_id') or '').strip()
+    user_id  = (request.form.get('user_id')  or '').strip()
+    try:
+        frame_skip = int(request.form.get('frame_skip', 2))
+    except (ValueError, TypeError):
+        frame_skip = 2
+
+    if not block_id or not user_id:
+        return jsonify({
+            'ok': False,
+            'message': 'block_id and user_id are required',
+        }), 400
+
+    uploads_dir = os.path.join(tempfile.gettempdir(), 'pinevision_uploads')
+    os.makedirs(uploads_dir, exist_ok=True)
+
+    safe_name  = secure_filename(f.filename)
+    video_path = os.path.join(uploads_dir, safe_name)
+    f.save(video_path)
+    log.info('upload-video: saved %s (%d bytes)', video_path, os.path.getsize(video_path))
+
+    detector = get_detector()
+    scan_id  = detector.start_video_scan(
+        video_path=video_path,
+        block_id=block_id,
+        user_id=user_id,
+        frame_skip=frame_skip,
+    )
+
+    if not scan_id:
+        return jsonify({'ok': False, 'message': 'Failed to start video scan'}), 500
+
+    return jsonify({'ok': True, 'scan_id': scan_id}), 200
