@@ -60,13 +60,18 @@ def update_detection_batch(
     bearing_count: int,
     non_bearing_count: int,
     non_viable_count: int,
-    total_count: int
+    total_count: int,
+    scan_progress: float = 0.0,
 ) -> bool:
     """
     Update both block stats AND scan progress in a single Firestore batch
     commit. Replaces the previous pattern of two separate .update() calls
     (update_block_stats + update_scan_progress), halving the number of
     network round-trips during every detection cycle.
+
+    scan_progress: 0–100 percentage of video frames already processed.
+    Written to the scan doc so the frontend can sync the progress bar and
+    video position to the backend's current frame.
     """
     try:
         db = get_firestore_client()
@@ -87,14 +92,15 @@ def update_detection_batch(
             'lastUpdate':        firestore.SERVER_TIMESTAMP,
         })
 
-        # Write 2 — active scan session record
+        # Write 2 — active scan session record (includes frame progress for frontend sync)
         scan_ref = db.collection('scans').document(scan_id)
         batch.update(scan_ref, {
-            'bearing':    bearing_count,
-            'nonBearing': non_bearing_count,
-            'nonViable':  non_viable_count,
-            'total':      total_count,
-            'lastUpdate': firestore.SERVER_TIMESTAMP,
+            'bearing':      bearing_count,
+            'nonBearing':   non_bearing_count,
+            'nonViable':    non_viable_count,
+            'total':        total_count,
+            'scanProgress': round(scan_progress, 1),
+            'lastUpdate':   firestore.SERVER_TIMESTAMP,
         })
 
         batch.commit()
@@ -132,17 +138,37 @@ def create_scan_session(block_id: str, user_id: str) -> Optional[str]:
         return None
 
 
+def get_block_population(block_id: str) -> int:
+    """Return the registered pineapple population for a block, or 0 if unset."""
+    try:
+        db = get_firestore_client()
+        doc = db.collection('blocks').document(block_id).get()
+        if doc.exists:
+            return int(doc.to_dict().get('population', 0) or 0)
+        return 0
+    except Exception as e:
+        print(f"⚠️ Could not fetch block population: {e}")
+        return 0
+
+
 def complete_scan_session(
     scan_id: str,
     block_id: str,
     bearing_count: int,
     non_bearing_count: int,
     non_viable_count: int,
-    total_count: int
+    total_count: int,
+    registered_population: int = 0,
+    estimated_bearing: int = 0,
+    estimated_non_bearing: int = 0,
+    detection_coverage: float = 0.0,
 ) -> bool:
     """
     Mark the scan as completed and increment the block's totalScans counter.
     Uses a batch write so both documents update atomically.
+
+    Optional population-estimation fields (estimated_bearing,
+    estimated_non_bearing, detection_coverage) are written when provided.
     """
     try:
         db = get_firestore_client()
@@ -155,25 +181,32 @@ def complete_scan_session(
 
         scan_ref = db.collection('scans').document(scan_id)
         batch.update(scan_ref, {
-            'status':             'completed',
-            'endTime':            firestore.SERVER_TIMESTAMP,
-            'bearing':            bearing_count,
-            'nonBearing':         non_bearing_count,
-            'nonViable':          non_viable_count,
-            'total':              total_count,
-            'bearingPercent':     round(bearing_pct,     1),
-            'nonBearingPercent':  round(non_bearing_pct, 1),
-            'nonViablePercent':   round(non_viable_pct,  1),
+            'status':                'completed',
+            'endTime':               firestore.SERVER_TIMESTAMP,
+            'bearing':               bearing_count,
+            'nonBearing':            non_bearing_count,
+            'nonViable':             non_viable_count,
+            'total':                 total_count,
+            'bearingPercent':        round(bearing_pct,     1),
+            'nonBearingPercent':     round(non_bearing_pct, 1),
+            'nonViablePercent':      round(non_viable_pct,  1),
+            'registeredPopulation':  registered_population,
+            'estimatedBearing':      estimated_bearing,
+            'estimatedNonBearing':   estimated_non_bearing,
+            'detectionCoverage':     round(detection_coverage, 2),
         })
 
         block_ref = db.collection('blocks').document(block_id)
         batch.update(block_ref, {
-            'totalScans':        firestore.Increment(1),
-            'lastScanned':       firestore.SERVER_TIMESTAMP,
-            'bearingPercent':    round(bearing_pct, 1),
-            'nonBearingPercent': round(non_bearing_pct, 1),
-            'nonViable':         round(non_viable_pct, 1),
-            'totalPineapples':   total_count,
+            'totalScans':            firestore.Increment(1),
+            'lastScanned':           firestore.SERVER_TIMESTAMP,
+            'bearingPercent':        round(bearing_pct, 1),
+            'nonBearingPercent':     round(non_bearing_pct, 1),
+            'nonViable':             round(non_viable_pct, 1),
+            'totalPineapples':       total_count,
+            'estimatedBearing':      estimated_bearing,
+            'estimatedNonBearing':   estimated_non_bearing,
+            'detectionCoverage':     round(detection_coverage, 2),
         })
 
         batch.commit()

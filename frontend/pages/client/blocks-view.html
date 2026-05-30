@@ -562,6 +562,7 @@
                 <div class="block-title-row">
                   <h1 class="block-page-title" id="detail-title">Block</h1>
                   <div id="detail-badge"></div>
+                  <div id="detail-harvest-badge"></div>
                 </div>
                 <div class="block-page-subtitle" id="detail-subtitle"></div>
               </div>
@@ -676,6 +677,18 @@
           <div class="modal-body">
             <div class="form-error" id="edit-form-error"></div>
 
+            <div class="form-group">
+              <label class="form-label" for="edit-blockName">Block Name *</label>
+              <input
+                type="text"
+                id="edit-blockName"
+                name="blockName"
+                class="form-input"
+                placeholder="e.g., Block A1"
+                required
+              />
+            </div>
+
             <div class="form-row">
               <div class="form-group">
                 <label class="form-label" for="edit-section">Section *</label>
@@ -761,16 +774,34 @@
                 />
               </div>
             </div>
+
+            <div class="form-group">
+              <label class="form-label" for="edit-status">Harvest Status</label>
+              <select id="edit-status" name="status" class="form-select">
+                <option value="Still Growing">Still Growing</option>
+                <option value="Harvested">Harvested</option>
+              </select>
+            </div>
           </div>
-          <div class="modal-footer">
+          <div class="modal-footer" style="justify-content: space-between;">
             <button
               type="button"
               class="btn btn-secondary"
-              onclick="closeEditModal()"
+              onclick="closeEditModal(); openDeleteModal();"
+              style="color:var(--red);border-color:rgba(139,32,32,0.3);"
             >
-              Cancel
+              Delete Block
             </button>
-            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <div class="d-flex gap-2">
+              <button
+                type="button"
+                class="btn btn-secondary"
+                onclick="closeEditModal()"
+              >
+                Cancel
+              </button>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
           </div>
         </form>
       </div>
@@ -864,6 +895,42 @@
       </div>
     </div>
 
+    <!-- DELETE BLOCK CONFIRMATION MODAL -->
+    <div id="delete-block-modal" class="modal">
+      <div class="modal-content" style="max-width: 420px">
+        <div class="modal-header">
+          <h2 class="modal-title">Delete Block</h2>
+          <button class="modal-close" onclick="closeDeleteModal()">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:var(--font-size-sm);color:var(--color-text-secondary);margin:0;">
+            Are you sure you want to delete
+            <strong id="delete-block-name" style="color:var(--color-text-primary);"></strong>?
+            This cannot be undone.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            onclick="closeDeleteModal()"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            onclick="handleDeleteBlock()"
+            style="background-color:var(--red);border-color:var(--red);"
+          >
+            Delete Block
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
@@ -882,6 +949,10 @@
       if (!auth.requireAuth()) {
         /* redirects */
       }
+
+      // ── Feature toggle ──────────────────────────────────────────────
+      // Set to true to re-enable declared population in calculations.
+      const INCLUDE_DECLARED_POPULATION = false;
 
       let currentBlock = null;
 
@@ -959,6 +1030,10 @@
             lastScanned: blockData.lastScanned,
           };
 
+          // Load harvest status from localStorage (frontend state only)
+          const statuses = getBlockStatuses();
+          currentBlock.harvestStatus = statuses[currentBlock.id] || "Still Growing";
+
           console.log("✅ Block loaded:", currentBlock);
 
           // Update page title and render
@@ -983,6 +1058,8 @@
           block.blockName || "Block " + block.blockId;
         document.getElementById("detail-badge").innerHTML =
           statusBadge(statusClass);
+        document.getElementById("detail-harvest-badge").innerHTML =
+          harvestStatusBadge(block.harvestStatus || "Still Growing");
         document.getElementById("detail-subtitle").textContent =
           block.section +
           " · " +
@@ -998,37 +1075,36 @@
       }
 
       function renderMetricCards(block) {
-        const bearingPlants = Math.round((block.bearing / 100) * block.plants);
-        const nonbearingPlants = Math.round(
-          (block.nonbearing / 100) * block.plants,
-        );
-        const nonViablePlants = Math.round(
-          (block.nonViable / 100) * block.plants,
-        );
+        const hasDetectedData = block.plants > 0;
+        const bearingPlants    = hasDetectedData ? Math.round((block.bearing    / 100) * block.plants) : 0;
+        const nonbearingPlants = hasDetectedData ? Math.round((block.nonbearing / 100) * block.plants) : 0;
+        const nonViablePlants  = hasDetectedData ? Math.round((block.nonViable  / 100) * block.plants) : 0;
+
+        const plantSub = (n) => hasDetectedData ? formatNumber(n) + " plants" : "—";
 
         document.getElementById("metric-cards-row").innerHTML =
           buildMetricCard(
             "Declared Pop.",
             formatNumber(block.declaredPopulation) + " plants",
-            "registered population",
+            "display only",
             "",
           ) +
           buildMetricCard(
             "Bearing",
             formatPercent(block.bearing),
-            formatNumber(bearingPlants) + " plants",
+            plantSub(bearingPlants),
             "green",
           ) +
           buildMetricCard(
             "Non-Bearing",
             formatPercent(block.nonbearing),
-            formatNumber(nonbearingPlants) + " plants",
+            plantSub(nonbearingPlants),
             "amber",
           ) +
           buildMetricCard(
             "Non-Viable",
             formatPercent(block.nonViable),
-            formatNumber(nonViablePlants) + " plants",
+            plantSub(nonViablePlants),
             "yellow",
           );
       }
@@ -1050,6 +1126,7 @@
                         <span class="stat-label">Area</span>
                         <span class="stat-value">${formatArea(block.area)}</span>
                     </div>
+                    
                 </div>
             </div>
             <div class="col-md-6">
@@ -1072,13 +1149,11 @@
       }
 
       function renderConditionBreakdown(block) {
-        const bearingPlants = Math.round((block.bearing / 100) * block.plants);
-        const nonbearingPlants = Math.round(
-          (block.nonbearing / 100) * block.plants,
-        );
-        const nonViablePlants = Math.round(
-          (block.nonViable / 100) * block.plants,
-        );
+        const hasDetectedData  = block.plants > 0;
+        const bearingPlants    = hasDetectedData ? Math.round((block.bearing    / 100) * block.plants) : 0;
+        const nonbearingPlants = hasDetectedData ? Math.round((block.nonbearing / 100) * block.plants) : 0;
+        const nonViablePlants  = hasDetectedData ? Math.round((block.nonViable  / 100) * block.plants) : 0;
+        const fmtPlant = (n) => hasDetectedData ? formatNumber(n) : "—";
 
         document.getElementById("condition-breakdown").innerHTML = `
         <div class="thead-row">
@@ -1104,7 +1179,7 @@
                     <tr>
                         <td><span class="badge good"><span class="bdot"></span>Bearing</span></td>
                         <td style="font-family:var(--font-mono);">${formatPercent(block.bearing)}</td>
-                        <td style="font-family:var(--font-mono);">${formatNumber(bearingPlants)}</td>
+                        <td style="font-family:var(--font-mono);">${fmtPlant(bearingPlants)}</td>
                         <td>
                             <div style="display:flex;align-items:center;gap:var(--space-sm);">
                                 <div class="bar-wrap" style="margin-bottom:0;">
@@ -1117,7 +1192,7 @@
                     <tr>
                         <td><span class="badge warn"><span class="bdot"></span>Non-Bearing</span></td>
                         <td style="font-family:var(--font-mono);">${formatPercent(block.nonbearing)}</td>
-                        <td style="font-family:var(--font-mono);">${formatNumber(nonbearingPlants)}</td>
+                        <td style="font-family:var(--font-mono);">${fmtPlant(nonbearingPlants)}</td>
                         <td>
                             <div style="display:flex;align-items:center;gap:var(--space-sm);">
                                 <div class="bar-wrap" style="margin-bottom:0;">
@@ -1138,7 +1213,7 @@
                             </span>
                         </td>
                         <td style="font-family:var(--font-mono);">${formatPercent(block.nonViable)}</td>
-                        <td style="font-family:var(--font-mono);">${formatNumber(nonViablePlants)}</td>
+                        <td style="font-family:var(--font-mono);">${fmtPlant(nonViablePlants)}</td>
                         <td>
                             <div style="display:flex;align-items:center;gap:var(--space-sm);">
                                 <div class="bar-wrap" style="margin-bottom:0;">
@@ -1256,17 +1331,61 @@
           .join("");
       }
 
-      // ── Modal Helpers ────────────────────────────────────────────
+      // ── localStorage helpers (frontend state only) ───────────────
+
+      function getBlockStatuses() {
+        try {
+          return JSON.parse(localStorage.getItem("pinevision_block_statuses") || "{}");
+        } catch (e) {
+          return {};
+        }
+      }
+
+      function saveBlockStatus(blockId, status) {
+        const statuses = getBlockStatuses();
+        statuses[blockId] = status;
+        localStorage.setItem("pinevision_block_statuses", JSON.stringify(statuses));
+      }
+
+      function getDeletedBlocks() {
+        try {
+          return JSON.parse(localStorage.getItem("pinevision_deleted_blocks") || "[]");
+        } catch (e) {
+          return [];
+        }
+      }
+
+      // ── Harvest status badge ──────────────────────────────────────
+
+      function harvestStatusBadge(status) {
+        if (status === "Harvested") {
+          return '<span class="badge good"><span class="bdot"></span>Harvested</span>';
+        }
+        return '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:var(--radius-pill);font-size:var(--font-size-xs);font-weight:var(--font-weight-medium);background:var(--surf2);color:var(--color-text-secondary);border:1px solid var(--border);"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-text-secondary);flex-shrink:0;opacity:0.5;"></span>Still Growing</span>';
+      }
+
+      // ── Modal setup ───────────────────────────────────────────────
 
       function setupModals() {
         utils.setupModalClose("edit-block-modal");
         utils.setupModalClose("schedule-scan-modal");
         utils.setupModalClose("trend-modal");
+        utils.setupModalClose("delete-block-modal");
       }
 
+      // ── Edit modal ────────────────────────────────────────────────
+
       function openEditModal() {
-        // Edit functionality - to be implemented later
-        utils.showToast("Edit feature coming soon!", "info");
+        if (!currentBlock) return;
+        document.getElementById("edit-blockName").value = currentBlock.blockName || "";
+        document.getElementById("edit-section").value = currentBlock.section || "";
+        document.getElementById("edit-area").value = currentBlock.area || "";
+        document.getElementById("edit-planted").value = currentBlock.planted || "";
+        document.getElementById("edit-forcingDate").value = currentBlock.forcingDate || "";
+        document.getElementById("edit-daf").value = currentBlock.daf || "";
+        document.getElementById("edit-declaredPopulation").value = currentBlock.declaredPopulation || "";
+        document.getElementById("edit-status").value = currentBlock.harvestStatus || "Still Growing";
+        utils.showModal("edit-block-modal");
       }
 
       function closeEditModal() {
@@ -1275,9 +1394,64 @@
 
       function handleEditBlock(event) {
         event.preventDefault();
-        utils.showToast("Block updated successfully! (Demo mode)", "success");
+
+        const blockName = document.getElementById("edit-blockName").value.trim();
+        const section = document.getElementById("edit-section").value.trim();
+        const area = parseFloat(document.getElementById("edit-area").value);
+        const planted = document.getElementById("edit-planted").value.trim();
+        const forcingDate = document.getElementById("edit-forcingDate").value.trim();
+        const daf = parseInt(document.getElementById("edit-daf").value) || 0;
+        const declaredPopulation = parseInt(document.getElementById("edit-declaredPopulation").value);
+        const harvestStatus = document.getElementById("edit-status").value;
+
+        if (!blockName || !section || !area || !planted || !forcingDate || !declaredPopulation) {
+          utils.showFormError("edit-block-form", "Please fill in all required fields.");
+          return;
+        }
+
+        currentBlock.blockName = blockName;
+        currentBlock.section = section;
+        currentBlock.area = area;
+        currentBlock.planted = planted;
+        currentBlock.forcingDate = forcingDate;
+        currentBlock.daf = daf;
+        currentBlock.declaredPopulation = declaredPopulation;
+        currentBlock.harvestStatus = harvestStatus;
+
+        saveBlockStatus(currentBlock.id, harvestStatus);
+
+        renderPage(currentBlock);
+        document.title = currentBlock.blockName + " — PineVision";
         closeEditModal();
+        utils.showToast("Block updated successfully!", "success");
       }
+
+      // ── Delete modal ──────────────────────────────────────────────
+
+      function openDeleteModal() {
+        if (!currentBlock) return;
+        document.getElementById("delete-block-name").textContent =
+          currentBlock.blockName || "this block";
+        utils.showModal("delete-block-modal");
+      }
+
+      function closeDeleteModal() {
+        utils.hideModal("delete-block-modal");
+      }
+
+      function handleDeleteBlock() {
+        if (!currentBlock) return;
+        const deleted = getDeletedBlocks();
+        deleted.push(currentBlock.id);
+        localStorage.setItem("pinevision_deleted_blocks", JSON.stringify(deleted));
+        closeDeleteModal();
+        utils.showToast("Block deleted.", "success");
+        setTimeout(function () {
+          window.location.href = "blocks.html";
+        }, 800);
+      }
+
+      // ── Schedule scan modal ───────────────────────────────────────
 
       function openScheduleScanModal() {
         utils.showToast("Schedule scan feature coming soon!", "info");

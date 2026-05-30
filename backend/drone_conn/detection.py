@@ -15,10 +15,43 @@ from pathlib import Path
 from .stream_capture import HLSStreamCapture
 from .firebase_client import (
     get_firestore_client,
+    get_block_population,
     update_detection_batch,
     create_scan_session,
     complete_scan_session,
 )
+
+
+def _compute_population_estimates(
+    bearing: int,
+    non_bearing: int,
+    registered_population: int,
+) -> tuple:
+    """
+    Extrapolate detected counts to full plantation size.
+
+    Returns (estimated_bearing, estimated_non_bearing, detection_coverage).
+    detection_coverage is a percentage (0–100+) of how much of the registered
+    population was actually observed during the scan.
+    """
+    detected_total = bearing + non_bearing
+
+    if detected_total > 0 and registered_population > 0:
+        bearing_ratio      = bearing      / detected_total
+        non_bearing_ratio  = non_bearing  / detected_total
+        estimated_bearing     = round(registered_population * bearing_ratio)
+        estimated_non_bearing = round(registered_population * non_bearing_ratio)
+    else:
+        estimated_bearing     = 0
+        estimated_non_bearing = 0
+
+    detection_coverage = (
+        (detected_total / registered_population * 100)
+        if registered_population > 0
+        else 0.0
+    )
+
+    return estimated_bearing, estimated_non_bearing, detection_coverage
 
 
 def check_thresholds_and_create_alerts(
@@ -200,6 +233,9 @@ class PineappleDetector:
         self.total_frames_processed = 0
         self.detection_active = False
         self.detection_thread = None
+
+        # Time-sync state — retained as stubs for API backwards-compatibility
+        self._current_scan_id: Optional[str] = None
         
     def reset_tracking(self):
         """Reset all tracking data for a new scan"""
@@ -209,7 +245,26 @@ class PineappleDetector:
             'non_viable': set()
         }
         self.total_frames_processed = 0
+        # Re-initialize the tracker so Kalman filter state and track-ID counters
+        # from a previous scan don't influence the new one.  Without this, the
+        # same video produces different unique-ID assignments on every run.
+        self.tracker = DeepSort(
+            max_age=30,
+            n_init=3,
+            max_iou_distance=0.7,
+        )
         print("🔄 Tracking data reset")
+
+    def push_video_time(self, scan_id: str, video_time: float, is_ended: bool = False):
+        """
+        No-op stub retained for API backwards-compatibility.
+
+        The time-synced seek-based loop has been replaced with a deterministic
+        sequential reader (_video_scan_loop_sequential) that reads frames via
+        cap.read() without seeking.  Frontend video timestamps are no longer
+        needed and are intentionally ignored here.
+        """
+        pass  # intentional no-op — sequential scan drives itself
     
     # Maximum dimension (pixels) passed to YOLO and DeepSORT.
     # YOLOv8 is trained at 640×640; processing larger frames wastes compute
@@ -507,7 +562,13 @@ class PineappleDetector:
             bearing_percent = 0.0
             non_bearing_percent = 0.0
             non_viable_percent = 0.0
-        
+
+        # Population-based estimation
+        registered_population = get_block_population(block_id)
+        est_bearing, est_non_bearing, det_coverage = _compute_population_estimates(
+            bearing_count, non_bearing_count, registered_population
+        )
+
         # Complete scan session
         success = complete_scan_session(
             scan_id=scan_id,
@@ -515,7 +576,11 @@ class PineappleDetector:
             bearing_count=bearing_count,
             non_bearing_count=non_bearing_count,
             non_viable_count=non_viable_count,
-            total_count=total_count
+            total_count=total_count,
+            registered_population=registered_population,
+            estimated_bearing=est_bearing,
+            estimated_non_bearing=est_non_bearing,
+            detection_coverage=det_coverage,
         )
         
         if success:
@@ -527,6 +592,11 @@ class PineappleDetector:
                 print(f"   Non-Bearing: {non_bearing_count} ({non_bearing_percent:.1f}%)")
                 print(f"   Non-Viable: {non_viable_count} ({non_viable_percent:.1f}%)")
             print(f"   Unique IDs tracked: {len(self.unique_ids['bearing']) + len(self.unique_ids['non_bearing']) + len(self.unique_ids['non_viable'])}")
+            if registered_population > 0:
+                print(f"📈 Population Estimates (registered: {registered_population}):")
+                print(f"   Est. Bearing:     {est_bearing}")
+                print(f"   Est. Non-Bearing: {est_non_bearing}")
+                print(f"   Detection Coverage: {det_coverage:.1f}%")
             
             # ✅ CHECK THRESHOLDS AND CREATE/RESOLVE ALERTS
             print("\n🔔 Checking alert thresholds...")
@@ -548,12 +618,20 @@ class PineappleDetector:
         video_path: str,
         block_id: str,
         user_id: str,
-        frame_skip: int = 2,
+        process_every_n_frames: int = 5,
         update_interval: float = 2.0,
     ) -> Optional[str]:
         """
-        Start an async video-file scan. Returns scan_id immediately;
-        processing runs in a background daemon thread.
+        Start a deterministic sequential video-file scan. Returns scan_id
+        immediately; frame processing runs in a background daemon thread that
+        reads frames sequentially via cap.read() — identical to the pipeline
+        used in test_video_firebase.py — guaranteeing the same video always
+        produces the same detection results regardless of CPU load or browser
+        playback timing.
+
+        process_every_n_frames: process 1 frame out of every N sequential
+            frames (default 5, matching test_video_firebase.py). Higher values
+            are faster but may miss fast-moving plants.
         """
         import os
         if not os.path.isfile(video_path):
@@ -566,14 +644,17 @@ class PineappleDetector:
             return None
 
         self.reset_tracking()
+        self._current_scan_id = scan_id
+
         self.detection_active = True
         self.detection_thread = threading.Thread(
-            target=self._video_scan_loop,
-            args=(video_path, block_id, scan_id, user_id, frame_skip, update_interval),
+            target=self._video_scan_loop_sequential,
+            args=(video_path, block_id, scan_id, user_id,
+                  process_every_n_frames, update_interval),
             daemon=True,
         )
         self.detection_thread.start()
-        print(f"✅ Async video scan started — Scan ID: {scan_id}")
+        print(f"✅ Deterministic sequential video scan started — Scan ID: {scan_id}")
         return scan_id
 
     def _video_scan_loop(
@@ -660,6 +741,12 @@ class PineappleDetector:
         else:
             bearing_pct = non_bearing_pct = non_viable_pct = 0.0
 
+        # Population-based estimation
+        registered_population = get_block_population(block_id)
+        est_bearing, est_non_bearing, det_coverage = _compute_population_estimates(
+            bearing_count, non_bearing_count, registered_population
+        )
+
         if success_flag:
             committed = complete_scan_session(
                 scan_id=scan_id,
@@ -668,9 +755,17 @@ class PineappleDetector:
                 non_bearing_count=non_bearing_count,
                 non_viable_count=non_viable_count,
                 total_count=total_count,
+                registered_population=registered_population,
+                estimated_bearing=est_bearing,
+                estimated_non_bearing=est_non_bearing,
+                detection_coverage=det_coverage,
             )
             if committed:
                 print(f"✅ Video scan loop done — {frame_index} frames processed")
+                if registered_population > 0:
+                    print(f"📈 Population Estimates (registered: {registered_population}): "
+                          f"Est. Bearing={est_bearing}, Est. Non-Bearing={est_non_bearing}, "
+                          f"Coverage={det_coverage:.1f}%")
                 try:
                     check_thresholds_and_create_alerts(
                         block_id=block_id,
@@ -683,6 +778,190 @@ class PineappleDetector:
                     print(f"⚠️  Threshold check failed: {e}")
             else:
                 print("❌ complete_scan_session failed in video loop")
+        else:
+            try:
+                db = get_firestore_client()
+                from firebase_admin import firestore as _fs
+                db.collection('scans').document(scan_id).update({
+                    'status': 'failed',
+                    'endTime': _fs.SERVER_TIMESTAMP,
+                })
+            except Exception:
+                pass
+
+        # Clean up temp file
+        try:
+            import os as _os
+            if _os.path.isfile(video_path):
+                _os.remove(video_path)
+                print(f"🗑️  Removed temp file: {video_path}")
+        except Exception as e:
+            print(f"⚠️  Could not remove temp file: {e}")
+
+    def _video_scan_loop_sequential(
+        self,
+        video_path: str,
+        block_id: str,
+        scan_id: str,
+        user_id: str,
+        process_every_n_frames: int,
+        update_interval: float,
+    ):
+        """
+        Deterministic sequential background scan loop.
+
+        Reads every frame in order via cap.read() — never seeks — so the
+        exact same set of frames is always decoded in the exact same order.
+        This mirrors test_video_firebase.py exactly and makes results fully
+        reproducible across repeated scans of the same video.
+
+        Non-determinism sources eliminated vs. the old time-synced loop:
+          • No cv2.CAP_PROP_POS_MSEC seeks (seek accuracy is codec-dependent)
+          • No dependency on browser timeupdate event timing or CPU load
+          • No queue-drain that could drop or reorder frames between runs
+          • DeepSORT receives frames in a fixed, repeatable sequence so its
+            Kalman filter and appearance features converge identically every run
+        """
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            print(f"❌ OpenCV could not open: {video_path}")
+            self.detection_active = False
+            self._current_scan_id = None
+            try:
+                db = get_firestore_client()
+                from firebase_admin import firestore as _fs
+                db.collection('scans').document(scan_id).update({
+                    'status': 'failed',
+                    'endTime': _fs.SERVER_TIMESTAMP,
+                })
+            except Exception:
+                pass
+            return
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        source_fps   = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        print(f"🎬 Deterministic sequential scan: {total_frames} frames @ {source_fps:.1f} FPS | "
+              f"process_every={process_every_n_frames} frames | block={block_id}")
+
+        frame_count      = 0
+        frames_processed = 0
+        last_firebase_update = time.time()
+        success_flag     = False
+
+        try:
+            while self.detection_active:
+                ret, frame = cap.read()
+                if not ret:
+                    # End of video — natural completion
+                    success_flag = True
+                    break
+
+                frame_count += 1
+
+                # Process every Nth frame — identical stride to test_video_firebase.py
+                if frame_count % process_every_n_frames != 0:
+                    continue
+
+                try:
+                    results = self.detect_frame(frame)
+                    frames_processed += 1
+
+                    progress = (frame_count / total_frames * 100) if total_frames > 0 else 0
+                    if results['new_detections'] > 0:
+                        print(f"📊 Frame {frame_count}/{total_frames} ({progress:.1f}%) — "
+                              f"Total={results['total']} "
+                              f"(B:{results['bearing']}, "
+                              f"NB:{results['non_bearing']}, "
+                              f"NV:{results['non_viable']}) "
+                              f"[+{results['new_detections']} new]")
+
+                    now = time.time()
+                    if now - last_firebase_update >= update_interval:
+                        threading.Thread(
+                            target=update_detection_batch,
+                            kwargs=dict(
+                                block_id=block_id,
+                                scan_id=scan_id,
+                                bearing_count=results['bearing'],
+                                non_bearing_count=results['non_bearing'],
+                                non_viable_count=results['non_viable'],
+                                total_count=results['total'],
+                                scan_progress=progress,
+                            ),
+                            daemon=True,
+                        ).start()
+                        last_firebase_update = now
+
+                except Exception as e:
+                    print(f"⚠️  Detection error at frame {frame_count}: {e}")
+                    continue
+
+        except Exception as e:
+            print(f"❌ Sequential scan loop error: {e}")
+            import traceback
+            traceback.print_exc()
+
+        finally:
+            cap.release()
+            self._current_scan_id = None
+            self.detection_active = False
+
+        print(f"🛑 Sequential scan loop stopped "
+              f"({frame_count} frames read, {frames_processed} frames processed)")
+
+        # ── Final counts ─────────────────────────────────────────────
+        bearing_count     = len(self.unique_ids['bearing'])
+        non_bearing_count = len(self.unique_ids['non_bearing'])
+        non_viable_count  = len(self.unique_ids['non_viable'])
+        total_count       = bearing_count + non_bearing_count + non_viable_count
+
+        if total_count > 0:
+            bearing_pct     = (bearing_count     / total_count) * 100
+            non_bearing_pct = (non_bearing_count / total_count) * 100
+            non_viable_pct  = (non_viable_count  / total_count) * 100
+        else:
+            bearing_pct = non_bearing_pct = non_viable_pct = 0.0
+
+        registered_population = get_block_population(block_id)
+        est_bearing, est_non_bearing, det_coverage = _compute_population_estimates(
+            bearing_count, non_bearing_count, registered_population
+        )
+
+        if success_flag:
+            committed = complete_scan_session(
+                scan_id=scan_id,
+                block_id=block_id,
+                bearing_count=bearing_count,
+                non_bearing_count=non_bearing_count,
+                non_viable_count=non_viable_count,
+                total_count=total_count,
+                registered_population=registered_population,
+                estimated_bearing=est_bearing,
+                estimated_non_bearing=est_non_bearing,
+                detection_coverage=det_coverage,
+            )
+            if committed:
+                print(f"✅ Sequential scan complete — {frames_processed} frames processed")
+                print(f"📊 Final Results: Total={total_count} "
+                      f"(B:{bearing_count} {bearing_pct:.1f}%, "
+                      f"NB:{non_bearing_count} {non_bearing_pct:.1f}%, "
+                      f"NV:{non_viable_count} {non_viable_pct:.1f}%)")
+                if registered_population > 0:
+                    print(f"📈 Population Estimates (registered: {registered_population}): "
+                          f"Est. Bearing={est_bearing}, Est. Non-Bearing={est_non_bearing}, "
+                          f"Coverage={det_coverage:.1f}%")
+                try:
+                    check_thresholds_and_create_alerts(
+                        block_id=block_id,
+                        bearing_percent=bearing_pct,
+                        non_bearing_percent=non_bearing_pct,
+                        non_viable_percent=non_viable_pct,
+                        user_id=user_id,
+                    )
+                except Exception as e:
+                    print(f"⚠️  Threshold check failed: {e}")
+            else:
+                print("❌ complete_scan_session failed in sequential loop")
         else:
             try:
                 db = get_firestore_client()
@@ -827,6 +1106,12 @@ class PineappleDetector:
         else:
             bearing_percent = non_bearing_percent = non_viable_percent = 0.0
 
+        # Population-based estimation
+        registered_population = get_block_population(block_id)
+        est_bearing, est_non_bearing, det_coverage = _compute_population_estimates(
+            bearing_count, non_bearing_count, registered_population
+        )
+
         if success_flag:
             committed = complete_scan_session(
                 scan_id=scan_id,
@@ -835,6 +1120,10 @@ class PineappleDetector:
                 non_bearing_count=non_bearing_count,
                 non_viable_count=non_viable_count,
                 total_count=total_count,
+                registered_population=registered_population,
+                estimated_bearing=est_bearing,
+                estimated_non_bearing=est_non_bearing,
+                detection_coverage=det_coverage,
             )
             if committed:
                 print(f"\n✅ Video scan complete — {frame_index} frames read, "
@@ -845,6 +1134,11 @@ class PineappleDetector:
                     print(f"   Bearing          : {bearing_count} ({bearing_percent:.1f}%)")
                     print(f"   Non-Bearing      : {non_bearing_count} ({non_bearing_percent:.1f}%)")
                     print(f"   Non-Viable       : {non_viable_count} ({non_viable_percent:.1f}%)")
+                if registered_population > 0:
+                    print(f"📈 Population Estimates (registered: {registered_population}):")
+                    print(f"   Est. Bearing     : {est_bearing}")
+                    print(f"   Est. Non-Bearing : {est_non_bearing}")
+                    print(f"   Detection Coverage: {det_coverage:.1f}%")
 
                 print("\n🔔 Checking alert thresholds...")
                 try:

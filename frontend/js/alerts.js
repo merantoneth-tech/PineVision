@@ -55,9 +55,33 @@
         }
 
         currentUserId = currentUser.uid;
+        await loadThresholds();
         await loadAlertsFromFirestore();
         utils.setupModalClose('threshold-modal');
     };
+
+    // ═══════════════════════════════════════════════════════════
+    // LOAD THRESHOLDS — from Firestore, falls back to defaults
+    // ═══════════════════════════════════════════════════════════
+
+    async function loadThresholds() {
+        try {
+            const doc = await firebase.firestore()
+                .collection('user_settings')
+                .doc(currentUserId)
+                .get();
+            if (doc.exists) {
+                const saved = doc.data().alertThresholds;
+                if (saved) {
+                    if (saved.bearing)    thresholds.bearing    = saved.bearing;
+                    if (saved.nonbearing) thresholds.nonbearing = saved.nonbearing;
+                    if (saved.discolored) thresholds.discolored = saved.discolored;
+                }
+            }
+        } catch (error) {
+            console.error('Error loading thresholds:', error);
+        }
+    }
 
     // ═══════════════════════════════════════════════════════════
     // LOAD DATA — OPTIMIZED (2 parallel queries, no N+1)
@@ -362,7 +386,7 @@
         utils.hideModal('threshold-modal');
     };
 
-    window.handleSaveThresholds = function (e) {
+    window.handleSaveThresholds = async function (e) {
         e.preventDefault();
         const bw  = parseFloat(document.getElementById('t-bearing-watch').value);
         const bc  = parseFloat(document.getElementById('t-bearing-crit').value);
@@ -384,8 +408,41 @@
             return;
         }
 
-        utils.showToast('Thresholds saved! (Demo mode — not persisted)', 'success');
-        window.closeThresholdModal();
+        const updated = {
+            bearing:    { watch: bw,  critical: bc  },
+            nonbearing: { watch: nbw, critical: nbc },
+            discolored: { watch: dw,  critical: dc  },
+        };
+
+        try {
+            await firebase.firestore()
+                .collection('user_settings')
+                .doc(currentUserId)
+                .set({ alertThresholds: updated }, { merge: true });
+
+            thresholds = updated;
+            window.closeThresholdModal();
+
+            const cachedBlocks = window.pvCache && window.pvCache.get('blocks');
+            if (cachedBlocks) {
+                renderThresholds({
+                    forEach: fn => cachedBlocks.forEach(item => fn({ id: item.id, data: () => item._data })),
+                    size: cachedBlocks.length,
+                    _cached: true,
+                });
+            } else {
+                const blocksSnapshot = await firebase.firestore()
+                    .collection('blocks')
+                    .where('userId', '==', currentUserId)
+                    .get();
+                renderThresholds(blocksSnapshot);
+            }
+
+            utils.showToast('Thresholds saved!', 'success');
+        } catch (error) {
+            console.error('Error saving thresholds:', error);
+            utils.showFormError('threshold-form', 'Failed to save thresholds. Please try again.');
+        }
     };
 
     // ═══════════════════════════════════════════════════════════

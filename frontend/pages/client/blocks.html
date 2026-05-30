@@ -626,6 +626,10 @@
         /* redirects */
       }
 
+      // ── Feature toggle ──────────────────────────────────────────────
+      // Set to true to re-enable declared population in calculations.
+      const INCLUDE_DECLARED_POPULATION = false;
+
       const activeFilters = { status: "all", section: "all" };
       let ALL_BLOCKS = [];
 
@@ -651,7 +655,18 @@
 
           ALL_BLOCKS = [];
 
+          // Read frontend-only state from localStorage
+          const blockStatuses = (function () {
+            try { return JSON.parse(localStorage.getItem("pinevision_block_statuses") || "{}"); }
+            catch (e) { return {}; }
+          })();
+          const deletedBlocks = (function () {
+            try { return JSON.parse(localStorage.getItem("pinevision_deleted_blocks") || "[]"); }
+            catch (e) { return []; }
+          })();
+
           blocksSnapshot.forEach(function (doc) {
+            if (deletedBlocks.indexOf(doc.id) !== -1) return;
             const blockData = doc.data();
             ALL_BLOCKS.push({
               id: doc.id,
@@ -661,11 +676,14 @@
               area: blockData.area,
 
               // Latest scan data
-              stage: blockData.stage || blockData.blockName || "Plant Crop", // ← FIXED
+              stage: blockData.stage || blockData.blockName || "Plant Crop",
               bearing: blockData.bearingPercent || 0,
               nonbearing: blockData.nonBearingPercent || 0,
               plants: blockData.totalPineapples || 0,
-              nonViable: blockData.nonViable || 0, // ← CHANGED from discolored
+              nonViable: blockData.nonViable || 0,
+
+              // Harvest status from localStorage (frontend only)
+              harvestStatus: blockStatuses[doc.id] || "Still Growing",
 
               // Metadata
               lastScanned: blockData.lastScanned,
@@ -737,6 +755,10 @@
             const nonViableColor =
               block.nonViable > 10 ? "var(--red)" : "var(--amber)";
 
+            const harvestBadge = block.harvestStatus === "Harvested"
+              ? '<span class="badge good"><span class="bdot"></span>Harvested</span>'
+              : '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:var(--radius-pill);font-size:var(--font-size-xs);font-weight:var(--font-weight-medium);background:var(--surf2);color:var(--color-text-secondary);border:1px solid var(--border);"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-text-secondary);flex-shrink:0;opacity:0.5;"></span>Still Growing</span>';
+
             return `
                       <div class="col">
                           <div class="bcard h-100" onclick="showBlockDetail('${block.id}')">
@@ -746,7 +768,10 @@
                                       <div class="bcard-stage">${block.stage}</div>
                                       <div class="bcard-meta">${block.section} &middot; ${formatArea(block.area)}</div>
                                   </div>
-                                  ${statusBadge(statusClass)}
+                                  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:var(--space-xs);">
+                                      ${statusBadge(statusClass)}
+                                      ${harvestBadge}
+                                  </div>
                               </div>
 
                               <div class="bcard-bar-section">
@@ -870,7 +895,7 @@
               daf: parseInt(formData.daf),
               bearingPercent: 0.01,
               nonBearingPercent: 0.01,
-              totalPineapples: parseInt(formData.declaredPopulation),
+              totalPineapples: INCLUDE_DECLARED_POPULATION ? parseInt(formData.declaredPopulation) : 0,
               nonViable: 0.01,
 
               // Metadata

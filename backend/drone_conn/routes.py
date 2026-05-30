@@ -270,10 +270,39 @@ def upload_video():
         video_path=video_path,
         block_id=block_id,
         user_id=user_id,
-        frame_skip=frame_skip,
+        process_every_n_frames=5,  # matches test_video_firebase.py stride
+        update_interval=2.0,
     )
 
     if not scan_id:
         return jsonify({'ok': False, 'message': 'Failed to start video scan'}), 500
 
     return jsonify({'ok': True, 'scan_id': scan_id}), 200
+
+
+@drone_bp.route('/video-time', methods=['POST'])
+def video_time():
+    """
+    POST /api/drone/video-time
+    Body: { "scan_id": "...", "current_time": 12.5, "ended": false }
+
+    Receives the frontend video element's currentTime and forwards it to the
+    time-synced scan loop so the backend processes frames that correspond
+    to what the user is actually watching.
+    """
+    body        = request.get_json(silent=True) or {}
+    scan_id     = (body.get('scan_id') or '').strip()
+    current_time = body.get('current_time', 0)
+    is_ended    = bool(body.get('ended', False))
+
+    if not scan_id:
+        return jsonify({'ok': False, 'message': 'scan_id is required'}), 400
+
+    try:
+        current_time = float(current_time)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'current_time must be a number'}), 400
+
+    detector = get_detector()
+    detector.push_video_time(scan_id, current_time, is_ended)
+    return jsonify({'ok': True}), 200

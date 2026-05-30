@@ -13,6 +13,10 @@ const API_BASE         = '';        // same-origin Flask server
 const POLL_INTERVAL_MS = 5_000;
 const MAX_RECONNECT    = 3;
 
+// Interval (ms) at which the frontend polls the scan document for progress
+// while the backend sequential scan loop is running.
+const SCAN_PROGRESS_POLL_MS = 2_000;
+
 const HLS_CONFIG = {
     maxLoadingDelay:         10,
     manifestLoadingTimeOut:  8_000,
@@ -21,6 +25,8 @@ const HLS_CONFIG = {
 };
 
 // ── State ─────────────────────────────────────────────────────
+
+// (no video-time throttle state needed — scan is driven entirely by the backend)
 
 const DRONE_STATE = {
     status:               'idle',   // idle|connecting|active|reconnecting|failed|ending
@@ -38,6 +44,7 @@ const DRONE_STATE = {
     hls:                  null,
     firebaseListener:     null,
     scanFirebaseListener: null,  // listener for scans/{scanId} completion signal
+    scanProgressInterval: null,  // polls Firestore for backend scan progress
     videoMode:            false,  // true when playing an uploaded MP4 (not live HLS)
     videoBlobUrl:         null,   // object URL for the uploaded file
     videoEnded:           false,  // true when browser video element has finished playing
@@ -167,6 +174,7 @@ async function apiStopDetection(blockId, scanId, userId) {
     });
     return resp.json();
 }
+
 
 // ── Auto-Prepare (MediaMTX startup + IPv4 detection) ─────────
 
@@ -482,10 +490,9 @@ async function handleFileSelect(event) {
 
     // POST file to backend
     const formData = new FormData();
-    formData.append('file',       file);
-    formData.append('block_id',   DRONE_STATE.blockId);
-    formData.append('user_id',    DRONE_STATE.userId);
-    formData.append('frame_skip', '24');   // process every 5th frame (frames 5, 10, 15, ...)
+    formData.append('file',     file);
+    formData.append('block_id', DRONE_STATE.blockId);
+    formData.append('user_id',  DRONE_STATE.userId);
 
     let result;
     try {
@@ -506,14 +513,16 @@ async function handleFileSelect(event) {
     DRONE_STATE.scanStartTime    = new Date();
     DRONE_STATE.videoEnded       = false;
     DRONE_STATE.backendCompleted = false;
+    // Note: no _videoTimeSendAt reset needed — detection is driven entirely
+    // by the backend sequential loop, not by frontend video timestamps.
 
     startFirebaseListener();
     startScanCompletionListener();
     startScanTimer();
 
-    // Start playback
+    // Start playback — backend will seek video to its current frame via
+    // syncVideoToBackend(), keeping displayed position in sync with the scan.
     videoEl.play().catch(() => {});
-    videoEl.addEventListener('timeupdate', updateVideoProgress);
     videoEl.addEventListener('ended', handleVideoEnd, { once: true });
 
     transitionTo('active');
@@ -552,23 +561,18 @@ function updateVideoProgress() {
     if (fill) { fill.style.width = pct + '%'; fill.setAttribute('aria-valuenow', pct); }
     const pctEl = document.getElementById('stat-progress-pct');
     if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+
+    // Note: video position is NOT sent to the backend — the backend sequential
+    // scan loop reads frames independently of browser playback timing, which is
+    // what guarantees deterministic results across repeated scans.
 }
 
 function handleVideoEnd() {
     if (DRONE_STATE.status !== 'active' || !DRONE_STATE.videoMode) return;
 
-    const videoEl = document.getElementById('drone-feed');
-    videoEl.removeEventListener('timeupdate', updateVideoProgress);
-
-    // Lock progress at 100% and stop the elapsed-time timer
-    DRONE_STATE.stats.progress = 100;
-    updateStatDisplay();
-    stopScanIntervals();
-
     DRONE_STATE.videoEnded = true;
 
     if (!DRONE_STATE.backendCompleted) {
-        // Backend is still processing frames — notify user and wait for completion signal
         utils.showToast('Video complete — waiting for analysis to finish...', 'info');
     }
 
@@ -656,6 +660,34 @@ function stopFirebaseListener() {
     }
 }
 
+function syncVideoToBackend(pct) {
+    // Update progress bar from backend frame position
+    DRONE_STATE.stats.progress = pct;
+    const fill = document.getElementById('stat-progress-fill');
+    if (fill) { fill.style.width = pct + '%'; fill.setAttribute('aria-valuenow', pct); }
+    const pctEl = document.getElementById('stat-progress-pct');
+    if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+
+    // Seek video element to the backend's current frame position
+    const videoEl = document.getElementById('drone-feed');
+    if (!videoEl || !videoEl.duration) return;
+
+    const targetTime = videoEl.duration * (pct / 100);
+    const diff = targetTime - videoEl.currentTime;
+
+    if (diff > 2) {
+        // Backend is ahead — skip forward and resume
+        videoEl.currentTime = targetTime;
+        videoEl.play().catch(() => {});
+    } else if (diff < -3) {
+        // Backend is behind — pause until it catches up
+        videoEl.pause();
+    } else if (videoEl.paused && !DRONE_STATE.videoEnded) {
+        // Back in sync — resume normal playback
+        videoEl.play().catch(() => {});
+    }
+}
+
 function startScanCompletionListener() {
     if (!DRONE_STATE.scanId || typeof firebase === 'undefined') return;
 
@@ -667,6 +699,12 @@ function startScanCompletionListener() {
         .onSnapshot((doc) => {
             if (!doc.exists) return;
             const data = doc.data();
+
+            // Sync video position and progress bar to backend's current frame
+            if (DRONE_STATE.videoMode && typeof data.scanProgress === 'number') {
+                syncVideoToBackend(data.scanProgress);
+            }
+
             if (data.status !== 'completed') return;
 
             // Overwrite stats with the authoritative final values from the scan doc
@@ -675,7 +713,7 @@ function startScanCompletionListener() {
             DRONE_STATE.stats.bearing    = data.bearingPercent    || 0;
             DRONE_STATE.stats.nonBearing = data.nonBearingPercent || 0;
             DRONE_STATE.stats.discolored = data.nonViablePercent  || 0;
-            if (!DRONE_STATE.videoEnded) updateStatDisplay();
+            updateStatDisplay();
 
             DRONE_STATE.backendCompleted = true;
             checkVideoScanComplete();
@@ -686,9 +724,11 @@ function startScanCompletionListener() {
 
 function checkVideoScanComplete() {
     if (DRONE_STATE.status !== 'active' || !DRONE_STATE.videoMode) return;
-    if (!DRONE_STATE.videoEnded || !DRONE_STATE.backendCompleted) return;
+    // Backend completion is the authoritative signal — it runs the full frame
+    // sequence deterministically, so its 'completed' status means all data is saved.
+    if (!DRONE_STATE.backendCompleted) return;
 
-    // Both the browser video and the backend frame processing are done
+    stopScanIntervals();
     showScanFinishedModal();
 }
 
@@ -837,6 +877,8 @@ function startScanTimer() {
 function stopScanIntervals() {
     clearInterval(DRONE_STATE.timerInterval);
     DRONE_STATE.timerInterval = null;
+    clearInterval(DRONE_STATE.scanProgressInterval);
+    DRONE_STATE.scanProgressInterval = null;
 }
 
 // ── HLS Cleanup ───────────────────────────────────────────────
