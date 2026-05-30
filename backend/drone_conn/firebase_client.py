@@ -62,6 +62,7 @@ def update_detection_batch(
     non_viable_count: int,
     total_count: int,
     scan_progress: float = 0.0,
+    recent_frames=None,
 ) -> bool:
     """
     Update both block stats AND scan progress in a single Firestore batch
@@ -94,14 +95,17 @@ def update_detection_batch(
 
         # Write 2 — active scan session record (includes frame progress for frontend sync)
         scan_ref = db.collection('scans').document(scan_id)
-        batch.update(scan_ref, {
+        scan_update = {
             'bearing':      bearing_count,
             'nonBearing':   non_bearing_count,
             'nonViable':    non_viable_count,
             'total':        total_count,
             'scanProgress': round(scan_progress, 1),
             'lastUpdate':   firestore.SERVER_TIMESTAMP,
-        })
+        }
+        if recent_frames is not None:
+            scan_update['recentFrames'] = recent_frames
+        batch.update(scan_ref, scan_update)
 
         batch.commit()
         return True

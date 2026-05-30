@@ -74,6 +74,9 @@
             <!-- HLS video element -->
             <video id="drone-feed" autoplay muted playsinline></video>
 
+            <!-- Bounding-box overlay canvas (aligned via object-fit:cover mapping in JS) -->
+            <canvas id="dv-bbox-canvas" class="dv-bbox-canvas" aria-hidden="true"></canvas>
+
             <!-- Placeholder overlay (IDLE / FAILED) -->
             <div id="dv-placeholder" class="dv-overlay dv-overlay--center">
                 <div class="dv-placeholder-inner">

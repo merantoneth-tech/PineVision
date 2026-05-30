@@ -61,6 +61,188 @@ const STATUS_LABELS = {
     ending:       'Ending Scan...',
 };
 
+// ── Bounding-box Overlay ──────────────────────────────────────
+//
+// Renders per-frame detection boxes on top of the MP4 video.
+// Data flows: backend detect_frame() → Firestore recentFrames → ingestFrames()
+// → frameCache.  A requestAnimationFrame loop looks up the closest stored
+// frame time for video.currentTime and draws the matching boxes.
+//
+// Coordinate mapping: bboxes arrive normalized (0–1) relative to the inference
+// frame, which is isotropically scaled from the original video, so normalized
+// coords are identical to those of the original frame.  getVideoPaintRect()
+// accounts for object-fit:cover so boxes line up with the visible pixels.
+
+const BboxOverlay = (() => {
+    const COLORS = {
+        bearing:     '#22c55e',
+        non_bearing: '#f59e0b',
+        non_viable:  '#eab308',
+    };
+    const SHORT = { bearing: 'B', non_bearing: 'NB', non_viable: 'NV' };
+
+    let frameTimes = [];        // sorted number[] — timestamps of stored frames
+    let frameCache = new Map(); // time → detection[]
+    let rafId      = null;
+    let active     = false;
+    let canvas     = null;
+    let ctx        = null;
+
+    function init() {
+        canvas = document.getElementById('dv-bbox-canvas');
+        if (canvas) ctx = canvas.getContext('2d');
+    }
+
+    function start() {
+        if (!canvas) init();
+        if (!canvas || !ctx) return;
+        frameTimes = [];
+        frameCache.clear();
+        active = true;
+        canvas.classList.add('dv-bbox-active');
+        _scheduleRaf();
+    }
+
+    function stop() {
+        active = false;
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        if (canvas) {
+            canvas.classList.remove('dv-bbox-active');
+            if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        frameTimes = [];
+        frameCache.clear();
+    }
+
+    // Called from startScanCompletionListener whenever the scan doc updates
+    function ingestFrames(recentFrames) {
+        if (!Array.isArray(recentFrames)) return;
+        for (const f of recentFrames) {
+            const t = Number(f.t);
+            if (isNaN(t)) continue;
+            if (!frameCache.has(t)) {
+                // Keep frameTimes sorted (frames arrive roughly in order)
+                frameTimes.splice(_upperBound(frameTimes, t), 0, t);
+            }
+            frameCache.set(t, Array.isArray(f.d) ? f.d : []);
+        }
+    }
+
+    function _scheduleRaf() {
+        if (!active) return;
+        rafId = requestAnimationFrame(_tick);
+    }
+
+    function _tick() {
+        if (!active) return;
+
+        const wrapper = document.getElementById('drone-feed-wrapper');
+        const videoEl = document.getElementById('drone-feed');
+        if (!wrapper || !videoEl) { _scheduleRaf(); return; }
+
+        // Keep canvas pixel dimensions in sync with wrapper
+        const cw = wrapper.clientWidth, ch = wrapper.clientHeight;
+        if (cw > 0 && ch > 0 && (canvas.width !== cw || canvas.height !== ch)) {
+            canvas.width  = cw;
+            canvas.height = ch;
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (videoEl.readyState >= 1 && videoEl.videoWidth) {
+            const dets = _findDetections(videoEl.currentTime);
+            if (dets && dets.length > 0) {
+                const pr = _getVideoPaintRect(videoEl);
+                if (pr) _drawDetections(dets, pr);
+            }
+        }
+
+        _scheduleRaf();
+    }
+
+    // Binary-search: find the latest stored frame time <= timeSec (+ small
+    // forward tolerance to cover frames arriving slightly ahead of playback).
+    function _findDetections(timeSec) {
+        if (!frameTimes.length) return null;
+        let idx = _upperBound(frameTimes, timeSec + 0.4) - 1;
+        if (idx < 0) return null;
+        // Don't show boxes more than 2 s stale (handles large processed-frame gaps)
+        if (timeSec - frameTimes[idx] > 2.0) return null;
+        return frameCache.get(frameTimes[idx]) || null;
+    }
+
+    // Returns the painted rect of the video content inside the element,
+    // accounting for object-fit:cover (scaled to fill, may crop edges).
+    function _getVideoPaintRect(videoEl) {
+        const cW = videoEl.clientWidth,  cH = videoEl.clientHeight;
+        const vW = videoEl.videoWidth,   vH = videoEl.videoHeight;
+        if (!vW || !vH) return null;
+        const scale = Math.max(cW / vW, cH / vH);
+        return {
+            x: (cW - vW * scale) / 2,
+            y: (cH - vH * scale) / 2,
+            w: vW * scale,
+            h: vH * scale,
+        };
+    }
+
+    function _drawDetections(dets, pr) {
+        ctx.save();
+        ctx.font = 'bold 11px monospace';
+        ctx.textBaseline = 'top';
+
+        for (const det of dets) {
+            if (!det.b || det.b.length < 4) continue;
+            const [nx, ny, nw, nh] = det.b;
+            const color  = COLORS[det.cls] || '#94a3b8';
+            const label  = (SHORT[det.cls] || '?') + ' #' + det.id;
+            const px = nx * pr.w + pr.x;
+            const py = ny * pr.h + pr.y;
+            const pw = nw * pr.w;
+            const ph = nh * pr.h;
+
+            if (pw < 4 || ph < 4) continue;
+
+            // Translucent fill
+            ctx.globalAlpha = 0.10;
+            ctx.fillStyle   = color;
+            ctx.fillRect(px, py, pw, ph);
+            ctx.globalAlpha = 1;
+
+            // Box outline
+            ctx.strokeStyle = color;
+            ctx.lineWidth   = 1.5;
+            ctx.strokeRect(px, py, pw, ph);
+
+            // Label pill (float above box, clamp to canvas top)
+            const tw     = ctx.measureText(label).width;
+            const lh     = 15;
+            const lx     = px;
+            const ly     = py >= lh ? py - lh : py + ph;
+            ctx.globalAlpha = 0.88;
+            ctx.fillStyle   = color;
+            ctx.fillRect(lx, ly, tw + 6, lh);
+            ctx.globalAlpha = 1;
+            ctx.fillStyle   = '#000';
+            ctx.fillText(label, lx + 3, ly + 2);
+        }
+
+        ctx.restore();
+    }
+
+    // Standard upper-bound: first index where arr[i] > val
+    function _upperBound(arr, val) {
+        let lo = 0, hi = arr.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (arr[mid] <= val) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    }
+
+    return { init, start, stop, ingestFrames };
+})();
+
 // ── UI Rendering ──────────────────────────────────────────────
 
 function renderUI() {
@@ -526,6 +708,7 @@ async function handleFileSelect(event) {
     videoEl.addEventListener('ended', handleVideoEnd, { once: true });
 
     transitionTo('active');
+    BboxOverlay.start();
     document.getElementById('dv-stream-quality').textContent = 'MP4';
     document.querySelector('.dv-live-badge').innerHTML =
         '<span class="dv-live-dot" aria-hidden="true"></span> MP4';
@@ -533,6 +716,7 @@ async function handleFileSelect(event) {
 }
 
 function handleVideoFailed(message) {
+    BboxOverlay.stop();
     DRONE_STATE.videoMode = false;
 
     const videoEl = document.getElementById('drone-feed');
@@ -592,6 +776,7 @@ function showScanFinishedModal() {
 
 function handleScanFinished() {
     closeBsModal('modal-scan-finished');
+    BboxOverlay.stop();
 
     // Data is already persisted: backend called complete_scan_session before
     // signalling 'completed', which wrote final counts to both the scan doc and
@@ -703,6 +888,11 @@ function startScanCompletionListener() {
             // Sync video position and progress bar to backend's current frame
             if (DRONE_STATE.videoMode && typeof data.scanProgress === 'number') {
                 syncVideoToBackend(data.scanProgress);
+            }
+
+            // Feed newly arrived frame bboxes into the overlay cache
+            if (DRONE_STATE.videoMode && Array.isArray(data.recentFrames)) {
+                BboxOverlay.ingestFrames(data.recentFrames);
             }
 
             if (data.status !== 'completed') return;
@@ -833,6 +1023,7 @@ async function handleEndScan() {
 
     stopScanIntervals();
     stopFirebaseListener();
+    BboxOverlay.stop();
 
     const videoEl = document.getElementById('drone-feed');
     videoEl.pause();
@@ -1087,6 +1278,7 @@ function initPage() {
     
     console.log('📦 Block ID:', DRONE_STATE.blockId);
     
+    BboxOverlay.init();
     setupBackNavigation();
     setupModalEvents();
     setupFullscreen();

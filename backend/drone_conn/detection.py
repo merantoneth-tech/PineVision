@@ -342,10 +342,10 @@ class PineappleDetector:
         for track in tracks:
             if not track.is_confirmed():
                 continue
-            
+
             track_id = track.track_id
             class_name = track.det_class
-            
+
             # Normalize class name
             if class_name in ['bearing', 'Bearing']:
                 category = 'bearing'
@@ -356,27 +356,65 @@ class PineappleDetector:
             else:
                 print(f"⚠️ Unknown class: {class_name}")
                 continue
-            
+
             # Add to unique set (automatically prevents duplicates!)
             if track_id not in self.unique_ids[category]:
                 self.unique_ids[category].add(track_id)
                 new_detections += 1
-        
+
         # Calculate current counts
         bearing_count = len(self.unique_ids['bearing'])
         non_bearing_count = len(self.unique_ids['non_bearing'])
         non_viable_count = len(self.unique_ids['non_viable'])
         total_count = bearing_count + non_bearing_count + non_viable_count
-        
+
         self.total_frames_processed += 1
-        
+
+        # Collect per-track bboxes for the frontend overlay.
+        # Coordinates are normalized (0–1) relative to the inference frame so the
+        # frontend can map them onto the <video> element at any display resolution.
+        inf_h_px, inf_w_px = inference_frame.shape[:2]
+        bbox_detections = []
+        for track in tracks:
+            if not track.is_confirmed():
+                continue
+            cls = track.det_class or ''
+            if cls in ('bearing', 'Bearing'):
+                cls_key = 'bearing'
+            elif cls in ('non-bearing', 'non_bearing', 'Non-Bearing', 'nonbearing'):
+                cls_key = 'non_bearing'
+            elif cls in ('non-viable', 'non_viable', 'Non-Viable', 'nonviable', 'discolored'):
+                cls_key = 'non_viable'
+            else:
+                continue
+            try:
+                x1, y1, x2, y2 = (float(v) for v in track.to_ltrb())
+                x1 = max(0.0, min(x1, inf_w_px))
+                y1 = max(0.0, min(y1, inf_h_px))
+                x2 = max(0.0, min(x2, inf_w_px))
+                y2 = max(0.0, min(y2, inf_h_px))
+                if x2 > x1 and y2 > y1:
+                    bbox_detections.append({
+                        'id':  int(track.track_id),
+                        'cls': cls_key,
+                        'b':   [
+                            round(x1 / inf_w_px, 4),
+                            round(y1 / inf_h_px, 4),
+                            round((x2 - x1) / inf_w_px, 4),
+                            round((y2 - y1) / inf_h_px, 4),
+                        ],
+                    })
+            except Exception:
+                pass
+
         return {
-            'bearing': bearing_count,
-            'non_bearing': non_bearing_count,
-            'non_viable': non_viable_count,
-            'total': total_count,
-            'new_detections': new_detections,
-            'frame_number': self.total_frames_processed
+            'bearing':         bearing_count,
+            'non_bearing':     non_bearing_count,
+            'non_viable':      non_viable_count,
+            'total':           total_count,
+            'new_detections':  new_detections,
+            'frame_number':    self.total_frames_processed,
+            'bbox_detections': bbox_detections,
         }
     
     def start_detection(
@@ -843,10 +881,11 @@ class PineappleDetector:
         print(f"🎬 Deterministic sequential scan: {total_frames} frames @ {source_fps:.1f} FPS | "
               f"process_every={process_every_n_frames} frames | block={block_id}")
 
-        frame_count      = 0
-        frames_processed = 0
+        frame_count       = 0
+        frames_processed  = 0
         last_firebase_update = time.time()
-        success_flag     = False
+        success_flag      = False
+        recent_frames_buf = []   # per-frame bbox data accumulated between batch writes
 
         try:
             while self.detection_active:
@@ -875,8 +914,16 @@ class PineappleDetector:
                               f"NV:{results['non_viable']}) "
                               f"[+{results['new_detections']} new]")
 
+                    # Accumulate bbox snapshot for this processed frame
+                    recent_frames_buf.append({
+                        't': round(frame_count / source_fps, 3),
+                        'd': results.get('bbox_detections', []),
+                    })
+
                     now = time.time()
                     if now - last_firebase_update >= update_interval:
+                        frames_to_write = recent_frames_buf.copy()
+                        recent_frames_buf = []
                         threading.Thread(
                             target=update_detection_batch,
                             kwargs=dict(
@@ -887,6 +934,7 @@ class PineappleDetector:
                                 non_viable_count=results['non_viable'],
                                 total_count=results['total'],
                                 scan_progress=progress,
+                                recent_frames=frames_to_write,
                             ),
                             daemon=True,
                         ).start()

@@ -204,6 +204,18 @@ body {
     display: block;
 }
 
+/* Bounding-box canvas overlay — sits directly above the video */
+.dv-bbox-canvas {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: none;
+    z-index: 2;
+}
+.dv-bbox-canvas.dv-bbox-active {
+    display: block;
+}
+
 /* Generic overlay base */
 .dv-overlay {
     position: absolute;
