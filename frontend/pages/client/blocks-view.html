@@ -678,7 +678,7 @@
             <div class="form-error" id="edit-form-error"></div>
 
             <div class="form-group">
-              <label class="form-label" for="edit-blockName">Block Name *</label>
+              <label class="form-label" for="edit-blockName">Block ID *</label>
               <input
                 type="text"
                 id="edit-blockName"
@@ -776,10 +776,11 @@
             </div>
 
             <div class="form-group">
-              <label class="form-label" for="edit-status">Harvest Status</label>
+              <label class="form-label" for="edit-status">Harvest Cycle</label>
               <select id="edit-status" name="status" class="form-select">
                 <option value="Still Growing">Still Growing</option>
-                <option value="Harvested">Harvested</option>
+                <option value="Plant Crop">Plant Crop</option>
+                <option value="Ratoon Crop">Ratoon Crop</option>
               </select>
             </div>
           </div>
@@ -1086,7 +1087,7 @@
           buildMetricCard(
             "Declared Pop.",
             formatNumber(block.declaredPopulation) + " plants",
-            "display only",
+            "Registered Population",
             "",
           ) +
           buildMetricCard(
@@ -1115,7 +1116,7 @@
                 <div class="info-card">
                     <div class="info-card-title">General Details</div>
                     <div class="stat-row">
-                        <span class="stat-label">Block Name</span>
+                        <span class="stat-label">Block ID</span>
                         <span class="stat-value">${block.blockName || block.blockId}</span>
                     </div>
                     <div class="stat-row">
@@ -1355,11 +1356,14 @@
         }
       }
 
-      // ── Harvest status badge ──────────────────────────────────────
+      // ── Harvest cycle badge ──────────────────────────────────────
 
       function harvestStatusBadge(status) {
-        if (status === "Harvested") {
-          return '<span class="badge good"><span class="bdot"></span>Harvested</span>';
+        if (status === "Plant Crop") {
+          return '<span class="badge good"><span class="bdot"></span>Plant Crop</span>';
+        }
+        if (status === "Ratoon Crop") {
+          return '<span class="badge warn"><span class="bdot"></span>Ratoon Crop</span>';
         }
         return '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:var(--radius-pill);font-size:var(--font-size-xs);font-weight:var(--font-weight-medium);background:var(--surf2);color:var(--color-text-secondary);border:1px solid var(--border);"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-text-secondary);flex-shrink:0;opacity:0.5;"></span>Still Growing</span>';
       }
@@ -1420,10 +1424,29 @@
 
         saveBlockStatus(currentBlock.id, harvestStatus);
 
-        renderPage(currentBlock);
-        document.title = currentBlock.blockName + " — PineVision";
-        closeEditModal();
-        utils.showToast("Block updated successfully!", "success");
+        firebase
+          .firestore()
+          .collection("blocks")
+          .doc(currentBlock.id)
+          .update({
+            blockName: blockName,
+            section: section,
+            area: area,
+            planted: planted,
+            forcingDate: forcingDate,
+            daf: daf,
+            declaredPopulation: declaredPopulation,
+          })
+          .then(function () {
+            renderPage(currentBlock);
+            document.title = currentBlock.blockName + " — PineVision";
+            closeEditModal();
+            utils.showToast("Block updated successfully!", "success");
+          })
+          .catch(function (err) {
+            console.error("❌ Failed to update block:", err);
+            utils.showToast("Failed to save changes. Please try again.", "error");
+          });
       }
 
       // ── Delete modal ──────────────────────────────────────────────
